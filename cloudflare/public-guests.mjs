@@ -4,6 +4,7 @@ import {referenceLibraryPublic,referenceLibraryImport} from './reference-library
 import {referenceImport} from './reference-import.mjs';
 import {privateImport} from './private-import.mjs';
 import {archivePublic,archiveImport} from './experiment-archive.mjs';
+import {importArchiveSeed} from './archive-seed.mjs';
 import {ownerIdentity,ownerLogin,ownerLogout} from './owner-session.mjs';
 import {sha} from './provider.mjs';
 import {budgetState} from './budget.mjs';
@@ -45,7 +46,7 @@ export function createPublicGuestWorker(backend){return {
    if(url.pathname==='/api/references'||url.pathname==='/api/references/image')return await referenceLibraryPublic(request,env);if(url.pathname==='/api/archive'||url.pathname.startsWith('/api/archive/image/'))return await archivePublic(request,env);
    if(url.pathname==='/api/owner/login')return await ownerLogin(request,env);
    if(url.pathname==='/api/owner/logout')return await ownerLogout(request,env);
-   const owner=await ownerIdentity(request,env);if(url.pathname==='/api/owner/library-import/seed')return owner?await copyReferenceSeed(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/library-import/'))return owner?await referenceLibraryImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/reference-import/'))return owner?await referenceImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/private-import/'))return owner?await privateImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/archive/'))return owner?await archiveImport(request,env):json({error:'Owner login required'},401);if(owner)return await backend(request,env,owner);const redirect=ownerNavigationRedirect(request);if(redirect)return redirect;
+   const owner=await ownerIdentity(request,env);if(url.pathname==='/api/owner/library-import/seed')return owner?await copyReferenceSeed(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/library-import/'))return owner?await referenceLibraryImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/reference-import/'))return owner?await referenceImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/private-import/'))return owner?await privateImport(request,env):json({error:'Owner login required'},401);if(['/api/owner/archive/seed','/api/owner/archive/seed-status'].includes(url.pathname))return owner?await importArchiveSeed(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/archive/'))return owner?await archiveImport(request,env):json({error:'Owner login required'},401);if(owner)return await backend(request,env,owner);const redirect=ownerNavigationRedirect(request);if(redirect)return redirect;
    if(url.pathname==='/api/guest/session')return await sessionEndpoint(request,env);
    if(!env.DB)return json({error:'Guest backend unavailable'},503);
    const identity=await anonymousIdentity(request,env);if(!identity)return json({error:'Start an anonymous guest session; no account or login required'},401);

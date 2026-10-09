@@ -1184,5 +1184,5 @@
       ]
     }
   ],
-  "status": "Recovery candidates reported by the cloud workspace; image bytes were not materialized or independently verified in the publishing Windows executor (Library download HTTP 403). Not included in the published image count. Match original bytes and provenance before inclusion."
+  "status": "All 10 recovery packages and 124 unique PNG files verified byte-for-byte. 113 unique images matched 114 missing records and are included in the prepared snapshot. Eleven images still require record-level provenance and are excluded from the snapshot."
 }
