@@ -32,7 +32,7 @@ export async function sessionEndpoint(request,env){
  await env.DB.prepare('INSERT INTO anonymous_sessions VALUES (?,?,?)').bind(await sha(token),principalId,expires).run();
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
-const publicPaths=new Set(['/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
+const publicPaths=new Set(['/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
 const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
