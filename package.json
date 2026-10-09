@@ -1,0 +1,7 @@
+{
+  "name": "card-studio-cloud-bootstrap",
+  "private": true,
+  "type": "module",
+  "scripts": {"test:worker": "node scripts/test_worker.mjs", "configure:worker": "node scripts/configure_worker.mjs"},
+  "devDependencies": {"wrangler": "4.92.0"}
+}
