@@ -5,6 +5,13 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "playrixtest-db",
+      "database_id": "11ec038b-156d-42de-9ac8-fec35f439a07"
+    }
+  ],
   "assets": {
     "directory": "cloudflare/visitor-public",
     "binding": "ASSETS",
