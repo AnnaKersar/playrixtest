@@ -1,26 +1,19 @@
-import {calibratedAlternatives,drawCalibrated} from './editor-bridge.js';
-let privateEditorConfigured=false,currentRole='owner';
-const $=id=>document.getElementById(id);
-async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await r.json();if(!r.ok)throw Error(data.error||r.status);return data;}
-const report=e=>{$('status').textContent=e.message||String(e);};
-const button=(text,action)=>{const b=document.createElement('button');b.textContent=text;b.onclick=async()=>{b.disabled=true;try{await action();}catch(e){report(e);}finally{b.disabled=false;}};return b;};
-const link=(text,href)=>{const a=document.createElement('a');a.textContent=text;a.href=href;a.target='_blank';a.rel='noopener';return a;};
-let currentRun;
-async function refresh(){const data=await api('/api/studies');$('studies').replaceChildren(...data.runs.map(r=>button(`${r.name} · ${r.complete}/${r.total} · ${r.mode}`,()=>showRun(r.id))));}
-async function showRun(runId){currentRun=runId;const data=await api('/api/run?run='+encodeURIComponent(runId));$('jobs').replaceChildren(...(currentRole==='owner'?[link('Экспорт исследования JSON','/api/export?run='+encodeURIComponent(runId))]:[]));
- for(const job of data.jobs){const row=document.createElement('div');row.className='job';const title=document.createElement('p');title.textContent=`${job.object_id} · ${job.status}`;row.append(title);$('jobs').append(row);
- if(job.status!=='complete'){if(job.status==='needs_review'||job.status==='running')row.append(button('Восстановить только сохранённый ответ',async()=>{await api('/api/recover',{jobId:job.id});await showRun(runId);}));continue;}
- row.append(link('PNG 860×960',`/api/asset?job=${job.id}`),...(currentRole==='owner'?[link('Манифест',`/api/asset?job=${job.id}&kind=manifest`)]:[]));
- const image=new Image();image.src=`/api/asset?job=${job.id}`;await image.decode();const manifest=await api(`/api/image-info?job=${job.id}`);
- const alternatives=job.alternatives?JSON.parse(job.alternatives):privateEditorConfigured?await calibratedAlternatives(job,image,manifest.final_sha256):['#e9cc8b','#bcdcca','#bdccea'].map((color,i)=>({id:'candidate-'+i,config:{version:'bootstrap-flat/v1',background:color,dimensions:[860,960],layerOrder:['background','object']}}));
- if(!job.alternatives)await api('/api/candidates',{jobId:job.id,alternatives});
- const cards=document.createElement('div');cards.className='cards';row.append(cards);
- const save=async(action,selected)=>{await api('/api/choices',{jobId:job.id,eventId:crypto.randomUUID(),revision:(job.revision||0)+1,action,selected,diagnostics:{},material:{}});await showRun(runId);};
- for(const a of alternatives){const card=document.createElement('div'),canvas=document.createElement('canvas');canvas.width=860;canvas.height=960;const ctx=canvas.getContext('2d');if(a.config.version==='bootstrap-flat/v1'){ctx.fillStyle=a.config.background;ctx.fillRect(0,0,860,960);ctx.drawImage(image,0,0);}else await drawCalibrated(canvas,a,job,image,manifest.final_sha256);card.append(canvas,button('Выбрать '+a.id,()=>save('select',a.id)));cards.append(card);}
- row.append(button('Ничего не подходит',()=>save('none')),button('Пропустить',()=>save('skip')),button('Отменить выбор',()=>save('undo')));if(job.choice){const saved=document.createElement('p');saved.className='saved';saved.textContent='Сохранено: '+job.choice;row.append(saved);}
- }}
-$('plan').onclick=async()=>{try{const p=await api('/api/plan-mock',{theme:$('theme').value});$('objects').value=JSON.stringify(p.objects,null,2);$('status').textContent=p.warning;}catch(e){report(e);}};
-$('run').onclick=async()=>{const b=$('run');b.disabled=true;try{const result=await api('/api/runs',{mode:'mock',name:$('theme').value,objects:JSON.parse($('objects').value)});$('status').textContent=result.queue_pending?'Создано; очередь ожидает отправки.':'Создано. Очередь обрабатывает по одному изображению.';await refresh();await showRun(result.runId);}catch(e){report(e);}finally{b.disabled=false;}};
-$('dispatch').onclick=async()=>{try{report('Отправлено: '+(await api('/api/dispatch',{})).sent);}catch(e){report(e);}};
-$('refresh').onclick=async()=>{try{await refresh();if(currentRun)await showRun(currentRun);}catch(e){report(e);}};
-try{const state=await api('/api/preflight');currentRole=state.role;$('dispatch').hidden=currentRole!=='owner';privateEditorConfigured=state.editor==='private-package-configured';$('preflight').textContent=JSON.stringify(state,null,2);if(privateEditorConfigured)$('editor-note').textContent='Подключён приватный калиброванный v9. Новые исследования используют его три варианта; ранее сохранённые варианты остаются неизменными.';$('run').disabled=!state.mock_ready;$('plan').disabled=!state.mock_ready;if(state.mock_ready)await refresh();}catch(e){$('preflight').textContent=e.message;$('run').disabled=true;}
+import {drawCalibrated,editorEngine} from './editor-bridge.js';
+const $=id=>document.getElementById(id);let runId;
+async function api(path,body){const r=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),d=await r.json();if(!r.ok)throw Error(d.error||r.status);return d;}
+function report(e){$('status').textContent=e.message||String(e);}
+function button(label,fn){const b=document.createElement('button');b.textContent=label;b.onclick=async()=>{b.disabled=true;try{await fn();}catch(e){report(e);}finally{b.disabled=false;}};return b;}
+async function refresh(){const d=await api('/api/studies');$('studies').replaceChildren(...d.runs.map(r=>button(r.name+' · '+r.complete+'/'+r.total,()=>showRun(r.id))));if(!runId&&d.runs.length)await showRun(d.runs.find(r=>r.mode==='imported-v9')?.id||d.runs[0].id);}
+async function showRun(id){runId=id;const d=await api('/api/run?run='+encodeURIComponent(id));$('objects').replaceChildren(...d.jobs.map(j=>button(j.object_id+(j.choice?' ✓':''),()=>showJob(j))));$('jobs').replaceChildren();$('study-title').textContent=d.run.name;if(d.jobs.length)await showJob(d.jobs[0]);}
+async function showJob(job){$('jobs').replaceChildren();if(job.status!=='complete'){report('Объект ещё не готов.');return;}if(!job.alternatives)throw Error('У объекта нет сохранённых вариантов. Новые варианты автоматически не создаются.');
+const alternatives=JSON.parse(job.alternatives),saved=job.choice?JSON.parse(job.choice):null;
+const title=document.createElement('h3');title.textContent=job.object_id;$('jobs').append(title);
+const image=new Image();image.src='/api/asset?job='+encodeURIComponent(job.id);await image.decode();const manifest=await api('/api/image-info?job='+encodeURIComponent(job.id));
+const cards=document.createElement('div');cards.className='cards';$('jobs').append(cards);const diagnostics=document.createElement('textarea');diagnostics.rows=4;diagnostics.value=JSON.stringify(saved?.diagnostics||{},null,2);const details=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Сохранённые замечания';details.append(summary,diagnostics);$('jobs').append(details);
+const save=async(action,selected)=>{await api('/api/choices',{jobId:job.id,eventId:crypto.randomUUID(),revision:(job.revision||0)+1,action,selected,diagnostics:JSON.parse(diagnostics.value||'{}'),material:saved?.material||{}});const d=await api('/api/run?run='+encodeURIComponent(runId));await showJob(d.jobs.find(j=>j.id===job.id));report('Ответ сохранён.');};
+for(const [i,a] of alternatives.entries()){const card=document.createElement('div'),canvas=document.createElement('canvas');canvas.width=860;canvas.height=960;await drawCalibrated(canvas,a,job,image,manifest.final_sha256);card.append(canvas,button('Вариант '+(i+1)+(saved?.selected===a.id?' · выбран':''),()=>save('select',a.id)),button('Открыть в редакторе',async()=>{const e=await editorEngine(),frame=$('private-engine');e.setState(structuredClone(a.config));frame.hidden=false;frame.style.cssText='width:100%;height:850px;border:0';frame.scrollIntoView({behavior:'smooth'});}));cards.append(card);}
+$('jobs').append(button('Ни один не подходит',()=>save('none')),button('Пропустить',()=>save('skip')),button('Отменить ответ',()=>save('undo')));report(saved?'Сохранённый ответ: '+saved.action+' · версия '+job.revision:'Выберите вариант.');
+}
+$('refresh').onclick=()=>refresh().catch(report);$('export').onclick=()=>{if(runId)window.open('/api/export?run='+encodeURIComponent(runId),'_blank','noopener');};
+try{const s=await api('/api/preflight');$('export').hidden=s.role!=='owner';$('preflight').textContent=s.review_ready?'Сохранённые исследования доступны.':('Для подключения требуется: '+s.missing.filter(x=>x!=='IMAGE_JOBS').join(', '));if(s.review_ready)await refresh();}catch(e){report(e);}
+

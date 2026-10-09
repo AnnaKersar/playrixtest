@@ -1,6 +1,7 @@
 import {sha} from './provider.mjs';
 const allowed=new Set(['index.html','direction-v8.js','core-v9.js']);
 export async function privateEditor(request,env){
+ if(env.ARTIFACTS&&(!env.EDITOR_MANIFEST_KEY||!env.EDITOR_MANIFEST_SHA256)){const pointer=await env.ARTIFACTS.get('private-editor/active.json');if(pointer){const p=JSON.parse(await pointer.text());if(p.key==='editor/v9/manifest.json'&&/^[a-f0-9]{64}$/.test(p.sha256))env={...env,EDITOR_MANIFEST_KEY:p.key,EDITOR_MANIFEST_SHA256:p.sha256};}}
  if(!env.ARTIFACTS||!env.EDITOR_MANIFEST_KEY||!env.EDITOR_MANIFEST_SHA256)return Response.json({error:'Private editor package not provisioned'},{status:503});
  const pathname=new URL(request.url).pathname,name=pathname==='/editor/'?'index.html':pathname.slice('/editor/'.length);if(!allowed.has(name))return new Response('Not found',{status:404});
  const object=await env.ARTIFACTS.get(env.EDITOR_MANIFEST_KEY);if(!object)return new Response('Missing private manifest',{status:503});const text=await object.text();if(await sha(text)!==env.EDITOR_MANIFEST_SHA256)return new Response('Private manifest pin mismatch',{status:503});const m=JSON.parse(text);
