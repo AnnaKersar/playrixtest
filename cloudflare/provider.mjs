@@ -12,7 +12,8 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch) {
   const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size:'1376x1536',quality:'medium',background:'transparent',output_format:'png',prompt}))body.append(k,v);
   sheets.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/png'}),`sheet-${i+1}.png`));
   // Exactly one send. No SDK retries, redirects, alternative models or replay after timeout.
-  const response=await fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`},body,redirect:'error',signal:AbortSignal.timeout(240000)});
+  const response=await fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`},body,redirect:'manual',signal:AbortSignal.timeout(240000)});
+  if(response.status>=300&&response.status<400)throw Error('Provider redirect rejected');
   const requestId=response.headers.get('x-request-id');
   if(!response.ok)throw Error(`Provider HTTP ${response.status}; request ${requestId||'unknown'}`);
   const payload=await response.json(),base64=payload?.data?.[0]?.b64_json;

@@ -14,7 +14,7 @@ export async function authenticate(request, env, fetcher = fetch) {
     if (header.alg !== 'RS256' || typeof header.kid !== 'string') throw Error();
     let entry = cache.get(issuer);
     if (!entry || entry.expires < Date.now()) {
-      const response = await fetcher(issuer + '/cdn-cgi/access/certs', { redirect: 'error', signal: AbortSignal.timeout(10000) });
+      const response = await fetcher(issuer + '/cdn-cgi/access/certs', { redirect: 'manual', signal: AbortSignal.timeout(10000) });
       if (!response.ok) throw Error();
       const body = await response.json();
       if (!Array.isArray(body.keys)) throw Error();
