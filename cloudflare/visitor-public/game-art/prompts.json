@@ -1,0 +1,15 @@
+{
+  "tool": "built-in image_gen",
+  "assets": [
+    {
+      "file": "garden-background.png",
+      "prompt": "Wide Playrix-inspired casual mobile game garden workshop background: turquoise sky, puffy clouds, golden sunlight, rounded bushes and pink flowers at corners, golden wood at edges. Clear central 75 percent for generator UI. Premium polished 3D cartoon materials. No text, logos, UI panels, buttons or characters.",
+      "transparent": false
+    },
+    {
+      "file": "cards-emblem.png",
+      "prompt": "Transparent decorative emblem: three colorful thick collectible cards fanned out; front blue card with shiny red apple and green leaf, purple and golden cards behind, chunky golden paintbrush and three star sparkles. Playrix-inspired polished 3D casual game illustration, rounded toy-like forms, cyan purple gold red palette, centered square composition. No words, letters, logos or watermark.",
+      "transparent": true
+    }
+  ]
+}
