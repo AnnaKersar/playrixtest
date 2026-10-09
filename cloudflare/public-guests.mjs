@@ -32,16 +32,16 @@ export async function sessionEndpoint(request,env){
  await env.DB.prepare('INSERT INTO anonymous_sessions VALUES (?,?,?)').bind(await sha(token),principalId,expires).run();
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
-const publicPaths=new Set(['/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
+const publicPaths=new Set(['/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
 const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
 export function createPublicGuestWorker(backend){return {
  async fetch(request,env){const url=new URL(request.url);
   try{
-   if(['GET','HEAD'].includes(request.method)&&isReferenceSeedPath(url.pathname))return await env.PUBLIC_ASSETS.fetch(request);
+   if(['GET','HEAD'].includes(request.method)&&(isReferenceSeedPath(url.pathname)||['/game-art/garden-background.png','/game-art/cards-emblem.png'].includes(url.pathname)))return await env.PUBLIC_ASSETS.fetch(request);
    if(['GET','HEAD'].includes(request.method)&&publicPaths.has(url.pathname)){
-    if(!env.PUBLIC_ASSETS)return json({error:'Public-safe editor not configured'},503);const r=await env.PUBLIC_ASSETS.fetch(request),headers=new Headers(r.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(request.method==='HEAD'?null:r.body,{status:r.status,headers});
+    if(!env.PUBLIC_ASSETS)return json({error:'Public-safe editor not configured'},503);const r=await env.PUBLIC_ASSETS.fetch(request),headers=new Headers(r.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"frame-src 'self'; default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(request.method==='HEAD'?null:r.body,{status:r.status,headers});
    }
    if(url.pathname==='/api/references'||url.pathname==='/api/references/image')return await referenceLibraryPublic(request,env);if(url.pathname==='/api/archive'||url.pathname.startsWith('/api/archive/image/'))return await archivePublic(request,env);
    if(url.pathname==='/api/owner/login')return await ownerLogin(request,env);
