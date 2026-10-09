@@ -44,3 +44,9 @@ The cloud workspace reported 124 additional original PNGs after excluding the 91
 5. Publish a new reviewed snapshot, or use the existing owner archive import for a complete manifest and all matching images.
 
 The archive records evidence, not readiness of the paid-generation pipeline. Queue activation, journal database migration, exact generation reference package pins and budget preflight remain outside this change.
+
+## Prepared recovery update
+
+The current checkout contains 364 verified images: 160 original references and 204 historical files. Added 113 unique PNG files matching 114 missing records. 230 records remain missing; eleven further recovery files have no confirmed record association and are excluded. All ten packages and 124 candidate images passed SHA-256, size and raster integrity checks. The recovered artifacts are labeled without claiming they are independent API generations.
+
+`/studio/archive-import.html` now copies the pinned packaged snapshot to R2 with one button, no folder chooser, a persistent checkpoint, five images per request, full byte verification, and activation only after all images are verified. Owner authentication and same-origin checks apply. No arbitrary URL is accepted. `node scripts/test_archive_seed_import.mjs` checks corruption rejection, pause/resume and complete-only activation. Deployment is still required before this UI is available on the live site.
