@@ -1,0 +1,119 @@
+{
+  "model": "gpt-image-2.5-sunburst-2026-09-08",
+  "size": "1376x1536",
+  "quality": "medium",
+  "final_size": [
+    860,
+    960
+  ],
+  "background": "transparent",
+  "shared_style_block": "Synthetic offline fixture: simple rounded toy shapes, clear color blocks, no external artwork.",
+  "shared_style_sha256": "453985e0873ea4de673d59f820078a352ab5a0d9910771a18fc32b0e659af05a",
+  "generalized_rules": "Keep each synthetic object separate, centered and transparent. No artistic approval is implied.",
+  "generalized_rules_sha256": "982f626384faec13e34fc380e52746639fbfae3d32984a3cb07a05c2c93261fe",
+  "technical_contract": "Synthetic transparent foreground, 1376x1536 native; resize to 860x960.",
+  "sheet_instruction": "Use only the generated synthetic reference sheet fixtures.",
+  "briefs": [
+    {
+      "object_id": "001",
+      "name": "Synthetic shape 1",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "002",
+      "name": "Synthetic shape 2",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "003",
+      "name": "Synthetic shape 3",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "004",
+      "name": "Synthetic shape 4",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "005",
+      "name": "Synthetic shape 5",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "006",
+      "name": "Synthetic shape 6",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "007",
+      "name": "Synthetic shape 7",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "008",
+      "name": "Synthetic shape 8",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "009",
+      "name": "Synthetic shape 9",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "010",
+      "name": "Synthetic shape 10",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "011",
+      "name": "Synthetic shape 11",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "012",
+      "name": "Synthetic shape 12",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "013",
+      "name": "Synthetic shape 13",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "014",
+      "name": "Synthetic shape 14",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "015",
+      "name": "Synthetic shape 15",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "016",
+      "name": "Synthetic shape 16",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "017",
+      "name": "Synthetic shape 17",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "018",
+      "name": "Synthetic shape 18",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "019",
+      "name": "Synthetic shape 19",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    },
+    {
+      "object_id": "020",
+      "name": "Synthetic shape 20",
+      "brief": "A colored rounded rectangle with one transparent hole."
+    }
+  ],
+  "contract_id": "synthetic-fixture-v1"
+}

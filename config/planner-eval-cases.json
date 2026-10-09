@@ -1,0 +1,34 @@
+[
+  {
+    "input": "Category: cozy kitchen. No named objects.",
+    "expect": "Planner chooses coherent familiar items; appropriate vessel contents; varied justified density; no forced plot."
+  },
+  {
+    "input": "Garden collection: an empty undecorated vase.",
+    "expect": "Contents and decoration remain empty; record user locks."
+  },
+  {
+    "input": "Prior model: empty basket. Latest user: baskets must contain something.",
+    "expect": "Theme-appropriate contents with inference provenance; model default is not a user lock."
+  },
+  {
+    "input": "Home textiles: blue cushion.",
+    "expect": "Readable motif, not dense texture; motif choice declared."
+  },
+  {
+    "input": "C1 screwdriver, foreground only.",
+    "expect": "Functional details; no flower, contents or accessory propagation; no external support."
+  },
+  {
+    "input": "C3 picnic, transparent foreground pass.",
+    "expect": "C3 generates object and developed meaningful full-width surface together as a transparent assembly; background remains procedural. No unrelated pedestal."
+  },
+  {
+    "input": "Unlit candle, no accessories.",
+    "expect": "No flame, smoke or holder. Low detail remains valid."
+  },
+  {
+    "input": "Any category with immutable Art Direction hash.",
+    "expect": "Carry exact version/hash without rewriting style, model settings, refs or cost policies."
+  }
+]

@@ -1,0 +1,17 @@
+.env*
+!.env.example
+private/
+runtime/
+__pycache__/
+*.pyc
+*.zip
+*.png
+*.ipynb
+node_modules/
+qa-output/
+download-inputs.mjs
+scripts/check_source_refs.py
+scripts/add_run_links.py
+scripts/make_planner_schema.py
+scripts/qa-*-body.txt
+scripts/qa-body.txt

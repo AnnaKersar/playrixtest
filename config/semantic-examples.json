@@ -1,0 +1,6 @@
+[
+ {"object_id":"bowl","name":"Mixing bowl","brief":"One rounded ceramic mixing bowl.","semantic_details":{"detail_budget":2,"purpose":"Preparing berry batter","contents":["smooth batter","three strawberries"],"decorations":[],"accessories":[],"theme":"home baking"}},
+ {"object_id":"basket","name":"Wicker basket","brief":"One sturdy stylized wicker basket.","semantic_details":{"detail_budget":2,"purpose":"Harvesting apples","contents":["a small group of apples"],"decorations":[],"accessories":["folded cloth liner"],"theme":"orchard"}},
+ {"object_id":"cushion","name":"Cushion","brief":"One soft square cushion.","semantic_details":{"detail_budget":1,"purpose":"Decorative home cushion","contents":[],"decorations":["large simple leaf pattern"],"accessories":[],"theme":"garden room"}},
+ {"object_id":"hammer","name":"Hammer","brief":"One readable claw hammer.","semantic_details":{"detail_budget":0,"purpose":"Hand tool","contents":[],"decorations":[],"accessories":[],"theme":"workshop"}}
+]
