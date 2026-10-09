@@ -2,7 +2,7 @@ import {sha} from './provider.mjs';
 import {validateArchive} from './experiment-archive.mjs';
 
 // Only this reviewed package can be imported. No client URLs or filenames.
-export const ARCHIVE_SEED_SHA='6402dd8b6e5cad7d7177322abb86d406c700f84d16f9931d89da7a83bd922bbd';
+export const ARCHIVE_SEED_SHA='0071173bc93067dc7bc365c4ce89e5b0df0b977f770fba2c6d17868c0deebace';
 const prefix='/archive-seed/history-v1/';
 const checkpointKey='experiment-archive/seed-progress/'+ARCHIVE_SEED_SHA+'.json';
 const response=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
