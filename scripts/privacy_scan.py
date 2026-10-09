@@ -17,6 +17,9 @@ for name in files:
    manifest=json.loads((root/'cloudflare/visitor-public/archive-seed/history-v1/archive-manifest.json').read_text(encoding='utf-8'))
    data=p.read_bytes()
    approved=any(p.stem==a['sha256'] and len(data)==a['bytes'] and hashlib.sha256(data).hexdigest()==a['sha256'] and p.suffix==('.jpg' if a['mime']=='image/jpeg' else '.'+a['mime'].split('/')[1]) for a in manifest['assets'])
+  if name.startswith('cloudflare/visitor-public/archive/latest-lora-test/') and p.suffix.lower()=='.png':
+   manifest=json.loads((root/'cloudflare/visitor-public/archive/latest-lora-test/test.json').read_text(encoding='utf-8'))
+   approved=any(p.name==a['file'] and hashlib.sha256(p.read_bytes()).hexdigest()==a['sha256'] for a in manifest['assets'])
   if not approved:issues.append((name,'binary/private artifact'))
   continue
  text=p.read_text(encoding='utf8')

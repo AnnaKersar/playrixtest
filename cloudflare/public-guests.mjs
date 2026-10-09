@@ -34,6 +34,7 @@ export async function sessionEndpoint(request,env){
 }
 const publicPaths=new Set(['/generator.js','/generator-model.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
+for(const file of ['', '/', '/index.html', '/style.css', '/test.json', ...['ref','gpt-latest','flux-lora','flux-base'].flatMap(group=>['cup','basket'].map(object=>'/'+group+'-'+object+'.png'))])publicPaths.add('/archive/latest-lora-test'+file);
 for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json'])publicPaths.add('/archive-seed/history-v1/'+file);
 const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.

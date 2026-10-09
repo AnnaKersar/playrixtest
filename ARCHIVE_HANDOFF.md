@@ -1,5 +1,13 @@
 # Historical archive handoff
 
+## Latest visual review — first iteration, 2026-10-09
+
+The archive index now features `/archive/latest-lora-test/`: two subjects (cup and basket), with four columns: Playrix reference, latest GPT modular reconstruction, FLUX with LoRA, and FLUX without LoRA. Mobile groups each subject into two labeled columns. All eight original PNGs are preserved and verified against the corrected `test.json`, served alongside the page. Source transfer commit: `a5d8faca730629eda83cf58a4aba73568d3d8a18`.
+
+GPT objects are `objects20_teacup_style_50refs_v1-011` and `-022`, saved `candidate-1`, reconstructed from frozen v9 settings with CPU Canvas. They are not whole-image GPT generations; browser pixel identity is not asserted. Four FLUX images are the first uploaded fal.ai comparison. Later no-LoRA attempts are separate and do not replace these files. The empty GPT basket was intentionally requested; cup decoration had a more detailed brief. These differences limit comparisons and are not model failures. Exact checkpoint, effective request settings, cost and timing are not verified. Seed 1729 and scale 1 are chat instructions only. Full prompts are not published.
+
+This review is a separately versioned public archive page; it does not overwrite the 57-record historical manifest or the owner's active R2 snapshot. `node scripts/test_latest_lora.mjs` verifies eight SHA-256 hashes, anonymous routes, desktop four-column layout, mobile two-column layout at 390 px and image loading. No generation calls or owner import operations are performed.
+
 This change publishes the confirmed historical record separately from studio UI, editor and reference import work. It does not run generation or change billing, credentials, model pins, queue configuration or production generation switches.
 
 ## Access and exports
