@@ -1,0 +1,10 @@
+{
+  "name":"playrixtest",
+  "main":"cloudflare/public-demo-worker.mjs",
+  "compatibility_date":"2026-10-09",
+  "workers_dev":true,
+  "preview_urls":false,
+  "keep_vars":true,
+  "assets":{"directory":"cloudflare/public-demo","binding":"ASSETS","run_worker_first":true},
+  "vars":{"LIVE_GENERATION_ENABLED":"false","LIVE_PLANNER_ENABLED":"false"}
+}

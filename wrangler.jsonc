@@ -1,11 +1,17 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "playrixtest",
-  "main": "cloudflare/worker.mjs",
+  "main": "cloudflare/visitor-entry.mjs",
   "compatibility_date": "2026-10-09",
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
-  "assets": {"directory": "cloudflare/public", "binding": "ASSETS", "run_worker_first": true},
-  "vars": {"LIVE_GENERATION_ENABLED": "false"}
+  "assets": {
+    "directory": "cloudflare/visitor-public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": {
+    "LIVE_GENERATION_ENABLED": "false",
+    "LIVE_PLANNER_ENABLED": "false"
+  }
 }

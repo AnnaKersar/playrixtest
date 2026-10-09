@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {textRequest,parsePlan,strictSchema,textCost} from '../cloudflare/text-planner.mjs';
+import {plannerSchema} from '../cloudflare/planner-contract.mjs';
+import {privateEditor} from '../cloudflare/private-editor.mjs';
+import {sha} from '../cloudflare/provider.mjs';
+const checks=[];function check(name,fn){fn();checks.push(name);console.log('PASS '+name);}
+const schema=strictSchema(plannerSchema);function fixture(s){if(s.enum)return s.enum[0];if(s.type==='object')return Object.fromEntries(Object.entries(s.properties).map(([k,v])=>[k,fixture(v)]));if(s.type==='array')return [];return 'synthetic';}
+const plan=fixture(schema),collection=fixture(schema.properties.collections.items),object=fixture(schema.properties.collections.items.properties.objects.items);collection.objects=[object];plan.collections=[collection];plan.art_direction_version='synthetic-v1';plan.art_direction_sha256='a'.repeat(64);
+const frozen={input:{immutable_art_direction:{version:'synthetic-v1',sha256:'a'.repeat(64)}}};
+const payload={status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(plan)}]}],usage:{input_tokens:5,output_tokens:8,input_tokens_details:{cached_tokens:2}}};
+check('strict schema and valid structured plan',()=>{assert.equal(schema.additionalProperties,false);assert.equal(parsePlan(payload,frozen).objects.length,1);});
+check('refusal and incomplete output rejected',()=>{assert.throws(()=>parsePlan({...payload,status:'incomplete'},frozen));assert.throws(()=>parsePlan({...payload,output:[{content:[{type:'refusal'}]}]},frozen));});
+check('unknown properties and Art Direction mutations rejected',()=>{for(const p of [{...plan,extra:true},{...plan,art_direction_version:'changed'}])assert.throws(()=>parsePlan({...payload,output:[{content:[{type:'output_text',text:JSON.stringify(p)}]}]},frozen));});
+check('C3 keeps meaningful surface',()=>{const p=structuredClone(plan);p.collections[0].objects[0].production_category='C3';p.collections[0].objects[0].asset_stage='foreground_only';assert.throws(()=>parsePlan({...payload,output:[{content:[{type:'output_text',text:JSON.stringify(p)}]}]},frozen));});
+let calls=0;const env={LIVE_PLANNER_ENABLED:'true',OPENAI_API_KEY:'synthetic-not-a-credential'};await assert.rejects(()=>textRequest(env,frozen,async(url,init)=>{calls++;assert.equal(url,'https://api.openai.com/v1/responses');const b=JSON.parse(init.body);assert.equal(b.text.format.strict,true);assert.equal(b.store,false);assert.equal(init.redirect,'error');return new Response('',{status:429});}));check('single-send adapter with structured output and no retry',()=>assert.equal(calls,1));
+await assert.rejects(()=>textRequest({...env,LIVE_PLANNER_ENABLED:'false'},frozen,()=>{calls++;}));check('disabled text adapter sends nothing',()=>assert.equal(calls,1));
+check('usage accounting distinguishes cached tokens and unknown',()=>{assert.equal(textCost(payload.usage,{input:5,cached:1,output:20}),177);assert.equal(textCost({},{}),null);});
+const root=new URL('../private/worker-editor-package/',import.meta.url),mtext=await fs.readFile(new URL('manifest.json',root),'utf8'),manifest=JSON.parse(mtext),entries=new Map([['editor/v9/manifest.json',new TextEncoder().encode(mtext)]]);for(const f of manifest.files)entries.set(f.key,new Uint8Array(await fs.readFile(new URL(f.name,root))));const privateEnv={EDITOR_MANIFEST_KEY:'editor/v9/manifest.json',EDITOR_MANIFEST_SHA256:await sha(mtext),ARTIFACTS:{async get(key){const b=entries.get(key);return b?{text:async()=>new TextDecoder().decode(b),arrayBuffer:async()=>b.slice().buffer}:null;}}};
+const served=await privateEditor(new Request('https://studio.invalid/editor/'),privateEnv);check('private package hash validates and scoped CSP allows only pinned scripts',()=>{assert.equal(served.status,200);const csp=served.headers.get('Content-Security-Policy');assert(csp.includes("'sha256-"));assert(!csp.split('script-src')[1].split(';')[0].includes('unsafe-inline'));assert(csp.includes("frame-ancestors 'self'"));});
+check('private package contains no embedded source raster',()=>assert(!/data:image\/[^;]+;base64,[A-Za-z0-9+/=]{100,}/.test(new TextDecoder().decode(entries.get('editor/v9/index.html')))));
+assert.equal((await privateEditor(new Request('https://studio.invalid/editor/../private/secret'),privateEnv)).status,404);assert.equal((await privateEditor(new Request('https://studio.invalid/editor/'),{...privateEnv,EDITOR_MANIFEST_SHA256:'0'.repeat(64)})).status,503);check('private path allowlist and wrong manifest pin fail closed',()=>{});
+entries.get('editor/v9/core-v9.js')[0]^=1;assert.equal((await privateEditor(new Request('https://studio.invalid/editor/core-v9.js'),privateEnv)).status,503);check('private file tampering rejected',()=>{});
+console.log(JSON.stringify({passed:checks.length,externalCalls:0,paidCalls:0,uploaded:false}));

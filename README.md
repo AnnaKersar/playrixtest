@@ -1,3 +1,11 @@
+# AI Card Studio
+
+The default Cloudflare deployment now opens a public, synthetic pattern editor with no visitor login. Paid generation is disabled. Owner login at `/owner.html` requires a manually entered `OWNER_PASSCODE` Secret and D1 session storage. Private assets and historical studies are not public.
+
+**Dashboard:** leave Build command blank; deploy command `npx wrangler deploy`. The nine public-safe static assets are checked in, so no separate build step is required. The previous protected deployment configuration is preserved as `wrangler.access.jsonc`; this does not change account-level Cloudflare Access rules.
+
+Local source and optional server integration remain below.
+
 # AI Card Studio — local mock MVP
 
 Browser workflow: **brief → run → saved results → three procedural alternatives → review → editor draft**. No paid API calls, keys, cloud services or subscriptions are enabled. Demo images are synthetic shapes, not examples of artistic quality.
