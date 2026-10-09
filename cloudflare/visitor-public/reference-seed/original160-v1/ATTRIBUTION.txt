@@ -1,0 +1,4 @@
+Original reference artwork: Playrix.
+These are unchanged study reference cards, not generated project artwork.
+Published with the project owner's explicit instruction for a public reference library.
+The frozen generation subset remains a separate 50-reference/13-sheet package.
