@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {archivePublic,validateArchive} from '../cloudflare/experiment-archive.mjs';
 import {sha} from '../cloudflare/provider.mjs';
+import {createVisitorEntry} from '../cloudflare/visitor-entry.mjs';
 const root='cloudflare/visitor-public/archive-seed/history-v1/';
 const manifest=validateArchive(JSON.parse(await fs.readFile(root+'archive-manifest.json','utf8')));
 const assets={async fetch(req){const u=new URL(req.url);assert(u.pathname.startsWith('/archive-seed/history-v1/'));try{const data=await fs.readFile('cloudflare/visitor-public'+u.pathname);return new Response(req.method==='HEAD'?null:data,{headers:{'Content-Type':u.pathname.endsWith('.json')?'application/json':'image/png'}})}catch{return new Response(null,{status:404})}}};
@@ -20,6 +21,13 @@ assert.equal((await req('/api/archive','GET',{ASSETS:assets})).status,200);
 assert.equal((await req('/api/archive','GET',{})).status,404);
 assert.equal((await req('/api/archive','GET',{ASSETS:assets,ARTIFACTS:{async get(){throw Error('R2 failure')}}})).status,503);
 const missing=JSON.parse(await fs.readFile(root+'missing-media.json','utf8'));
+const visitor=createVisitorEntry();
+for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json']){
+ const path='/archive-seed/history-v1/'+file;
+ const response=await visitor.fetch(new Request('https://test.invalid'+path),{PUBLIC_ASSETS:assets});
+ assert.equal(response.status,200);assert(await response.json());
+ assert.equal((await visitor.fetch(new Request('https://test.invalid'+path,{method:'HEAD'}),{PUBLIC_ASSETS:assets})).body,null);
+}
 assert.equal(manifest.entries.length,57);assert.equal(manifest.chapters.length,6);
 assert.equal(manifest.entries.at(-1).images.length,160);
 assert(manifest.entries.every(e=>['hypothesis','change','testMethod','result','feedback','decision','evidence'].every(k=>typeof e[k]==='string'&&e[k].length)));
