@@ -1,0 +1,73 @@
+{
+  "id": "lora-fullprompt-attempt2-20261009",
+  "parent_test_id": "latest-gpt-vs-flux-lora-20261009",
+  "title": "FLUX с LoRA и без LoRA: вторая попытка с полными промптами",
+  "date": "2026-10-09",
+  "attempt": 2,
+  "status": "visual_review_not_controlled_benchmark",
+  "prompt_use": {
+    "full_prompts_used": true,
+    "verification": "confirmed_by_user",
+    "request_logs_verified": false
+  },
+  "generation_settings": {
+    "seed_verified": false,
+    "checkpoint_verified": false,
+    "lora_scale_verified": false,
+    "other_settings_verified": false
+  },
+  "assets": [
+    {
+      "file": "flux-base-cup.png",
+      "subject": "cup",
+      "group": "FLUX without LoRA",
+      "width": 848,
+      "height": 960,
+      "sha256": "f8ca4c9c7496dd9d1e50b1fce349c23826519a90c46e16aed87cb18188173f84"
+    },
+    {
+      "file": "flux-base-basket.png",
+      "subject": "basket",
+      "group": "FLUX without LoRA",
+      "width": 848,
+      "height": 960,
+      "sha256": "037939034a62f038acc5888ae110a01f15123fffcd8fdb26a4affd6e44a835ca"
+    },
+    {
+      "file": "flux-lora-basket.jpg",
+      "subject": "basket",
+      "group": "FLUX with LoRA",
+      "width": 848,
+      "height": 960,
+      "sha256": "da8e69564dda1835f4484fe8fe0b9ec3b31fdd40c91b655fceb150cb2f1b3a55"
+    },
+    {
+      "file": "flux-lora-cup.jpg",
+      "subject": "cup",
+      "group": "FLUX with LoRA",
+      "width": 848,
+      "height": 960,
+      "sha256": "7900535ddcefbe8400d75ccea8a3bc74cf61b17bf356a0359780063fb9a8086a"
+    }
+  ],
+  "groups": [
+    "FLUX without LoRA",
+    "FLUX with LoRA"
+  ],
+  "findings_ru": {
+    "cup_without_lora": "Терракотовая чашка без запрошенных голубой каёмки и цветка; пара слишком много.",
+    "cup_with_lora": "Чашка толще и белее, но голубая каёмка и цветок по-прежнему отсутствуют; пар обрезан краем изображения.",
+    "basket_without_lora": "Мелкое округлое плетение и незапрошенный жёсткий перфорированный обод с заклёпками.",
+    "basket_with_lora": "Отсутствует явно запрошенная высокая дугообразная ручка; форма напоминает кадку.",
+    "basket_contents": "Пустое содержимое корзины было запрошено намеренно и не является недостатком модели.",
+    "decision": "В этих двух примерах LoRA не обеспечивает соблюдение всех заданных деталей. Для вывода о влиянии LoRA нужны проверенные настройки и сопоставимые повторные прогоны."
+  },
+  "limitations": [
+    "Full prompt use is confirmed by the user; exact request logs and generation settings are unverified.",
+    "Seed, checkpoint and LoRA scale are unverified, so observed differences cannot be attributed solely to LoRA.",
+    "Only two subjects are shown; this is not a general model ranking.",
+    "Empty basket contents were intentional.",
+    "The with-LoRA images were supplied as JPEG and the without-LoRA images as PNG; fine texture and edge comparisons may be affected by encoding.",
+    "No verified cost or timing logs."
+  ]
+}
