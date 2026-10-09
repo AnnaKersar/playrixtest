@@ -1,10 +1,10 @@
 from pathlib import Path
 import json
 root=Path(__file__).resolve().parents[1]
-prompt=(root/'prompts/narrative-collection-designer-v1.1.md').read_text(encoding='utf8')
+prompt=(root/'prompts/narrative-collection-designer-v1.2.md').read_text(encoding='utf8')
 examples=json.loads((root/'config/enrichment-v1.1-examples.json').read_text(encoding='utf8'))['examples']
 schema=json.loads((root/'config/planner-output.schema.json').read_text(encoding='utf8'))
-code="// Generated from the versioned public planner contract by scripts/build_worker_planner.py.\nimport { sha } from './provider.mjs';\nexport const PLANNER_VERSION='narrative-collection-designer/v1.1';\n"
+code="// Generated from the versioned public planner contract by scripts/build_worker_planner.py.\nimport { sha } from './provider.mjs';\nexport const PLANNER_VERSION='narrative-collection-designer/v1.2';\n"
 code+='export const plannerPrompt='+json.dumps(prompt,ensure_ascii=False)+';\nconst examples='+json.dumps(examples,ensure_ascii=False)+';\nexport const plannerSchema='+json.dumps(schema,ensure_ascii=False)+';\n'
 code+='''export async function planMock(body) {
  const theme=body.theme||'',gd=body.gd_brief||'';

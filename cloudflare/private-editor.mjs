@@ -8,6 +8,6 @@ export async function privateEditor(request,env){
  if(m.version!=='private-editor/v1'||!Array.isArray(m.files))return new Response('Invalid private package',{status:503});const file=m.files.find(f=>f.name===name);if(!file||!file.key.startsWith('editor/v9/'))return new Response('Invalid package entry',{status:503});
  const asset=await env.ARTIFACTS.get(file.key);if(!asset)return new Response('Missing private package entry',{status:503});const bytes=await asset.arrayBuffer();if(bytes.byteLength!==file.bytes||await sha(bytes)!==file.sha256)return new Response('Private package integrity failure',{status:503});
  // Verify the immutable source above, then add the site control theme at delivery.
- const body=name.endsWith('.html')?new TextDecoder().decode(bytes).replace('</head>','<link rel="stylesheet" href="/ui.css"></head>'):bytes;
+ const body=name.endsWith('.html')?new TextDecoder().decode(bytes).replace('</head>','<link rel="stylesheet" href="/ui.css"></head>')+'<script src="/studio/composition-v10.js"></script>':bytes;
  return new Response(body,{headers:{'Content-Type':name.endsWith('.html')?'text/html; charset=utf-8':'text/javascript; charset=utf-8','Cache-Control':'private, no-store','Content-Security-Policy':m.csp,'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'}});
 }
