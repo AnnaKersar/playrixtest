@@ -17,5 +17,5 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch) {
   if(!response.ok)throw Error(`Provider HTTP ${response.status}; request ${requestId||'unknown'}`);
   const payload=await response.json(),base64=payload?.data?.[0]?.b64_json;
   if(typeof base64!=='string'||base64.length>34*1024*1024||payload.data.length!==1)throw Error('Invalid image response');
-  return {png:Uint8Array.from(atob(base64),c=>c.charCodeAt(0)),usage:payload.usage||null,requestId};
+  return {png:Uint8Array.from(atob(base64),c=>c.charCodeAt(0)),usage:payload.usage||null,model:payload.model||null,requestId};
 }

@@ -1,3 +1,5 @@
+import {referenceLibraryPublic,referenceLibraryImport} from './reference-library.mjs';
+import {referenceImport} from './reference-import.mjs';
 import {privateImport} from './private-import.mjs';
 import {archivePublic,archiveImport} from './experiment-archive.mjs';
 import {ownerIdentity,ownerLogin,ownerLogout} from './owner-session.mjs';
@@ -27,7 +29,7 @@ export async function sessionEndpoint(request,env){
  await env.DB.prepare('INSERT INTO anonymous_sessions VALUES (?,?,?)').bind(await sha(token),principalId,expires).run();
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
-const publicPaths=new Set(['/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
+const publicPaths=new Set(['/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
 const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
@@ -37,10 +39,10 @@ export function createPublicGuestWorker(backend){return {
    if(['GET','HEAD'].includes(request.method)&&publicPaths.has(url.pathname)){
     if(!env.PUBLIC_ASSETS)return json({error:'Public-safe editor not configured'},503);const r=await env.PUBLIC_ASSETS.fetch(request),headers=new Headers(r.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(request.method==='HEAD'?null:r.body,{status:r.status,headers});
    }
-   if(url.pathname==='/api/archive'||url.pathname.startsWith('/api/archive/image/'))return await archivePublic(request,env);
+   if(url.pathname==='/api/references'||url.pathname==='/api/references/image')return await referenceLibraryPublic(request,env);if(url.pathname==='/api/archive'||url.pathname.startsWith('/api/archive/image/'))return await archivePublic(request,env);
    if(url.pathname==='/api/owner/login')return await ownerLogin(request,env);
    if(url.pathname==='/api/owner/logout')return await ownerLogout(request,env);
-   const owner=await ownerIdentity(request,env);if(url.pathname.startsWith('/api/owner/private-import/'))return owner?await privateImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/archive/'))return owner?await archiveImport(request,env):json({error:'Owner login required'},401);if(owner)return await backend(request,env,owner);
+   const owner=await ownerIdentity(request,env);if(url.pathname.startsWith('/api/owner/library-import/'))return owner?await referenceLibraryImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/reference-import/'))return owner?await referenceImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/private-import/'))return owner?await privateImport(request,env):json({error:'Owner login required'},401);if(url.pathname.startsWith('/api/owner/archive/'))return owner?await archiveImport(request,env):json({error:'Owner login required'},401);if(owner)return await backend(request,env,owner);
    if(url.pathname==='/api/guest/session')return await sessionEndpoint(request,env);
    if(!env.DB)return json({error:'Guest backend unavailable'},503);
    const identity=await anonymousIdentity(request,env);if(!identity)return json({error:'Start an anonymous guest session; no account or login required'},401);
