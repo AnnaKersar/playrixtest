@@ -1,0 +1,81 @@
+{
+  "id": "latest-gpt-vs-flux-lora-20261009",
+  "title": "Последняя GPT-партия против FLUX с LoRA и без LoRA",
+  "date": "2026-10-09",
+  "status": "visual_review_not_controlled_benchmark",
+  "hypothesis": "LoRA приближает FLUX к казуальной стилистике Playrix; сравниваем также с последней GPT-партией.",
+  "assets": [
+    {
+      "file": "ref-cup.png",
+      "sha256": "6a785f7d3fadc9226638af96d84a8895acb7d7f44eafa5590f3bc8ec6a69a8d1"
+    },
+    {
+      "file": "ref-basket.png",
+      "sha256": "8484d8d4d99523f7651f1ef4d06318e9fe55dfac59c6db2a1d8a232150fd676e"
+    },
+    {
+      "file": "gpt-latest-cup.png",
+      "sha256": "41ff763e16b2c32a578f2cc7025635c9e98afff22165057b01e5c10d9fb32f30"
+    },
+    {
+      "file": "gpt-latest-basket.png",
+      "sha256": "3c39ba34f35de290d7073ff757f0b992a91a24a5154fb3aebf1988f21284a1e4"
+    },
+    {
+      "file": "flux-lora-cup.png",
+      "sha256": "cc75448975ed0607ba43d00bf4447977036036a2d87723610aba2ca3476f0816"
+    },
+    {
+      "file": "flux-base-cup.png",
+      "sha256": "e31a3267fc07b8b95eb4bcf3085682ee6ab32f9431b767f43a74a00de60d86af"
+    },
+    {
+      "file": "flux-lora-basket.png",
+      "sha256": "77ab602412d565dc41191044d2b43c43dc4cd0dffe5d2a0ceaf546a210b50da8"
+    },
+    {
+      "file": "flux-base-basket.png",
+      "sha256": "1f8344ebb2c60edcfbed352420b14be2a878556feb675c4a0f4d99f9e5358d7f"
+    }
+  ],
+  "groups": [
+    "Playrix reference",
+    "GPT latest modular reconstruction",
+    "FLUX with LoRA",
+    "FLUX without LoRA"
+  ],
+  "gpt": {
+    "run": "objects20_teacup_style_50refs_v1",
+    "study": "objects20-refs50-v9-materials-v1",
+    "objects": [
+      "011",
+      "022"
+    ],
+    "candidates": [
+      "candidate-1",
+      "candidate-1"
+    ],
+    "note": "Reconstructed using saved v9 JS renderer and frozen selected configs with CPU Canvas. Browser pixel identity is not asserted. No new generation."
+  },
+  "flux": {
+    "service": "fal.ai",
+    "endpoint_from_chat": "fal-ai/flux-lora",
+    "requested_seed": 1729,
+    "requested_lora_scale": 1,
+    "settings_verified_from_request_log": false,
+    "note": "Image mapping from upload timestamps and user labels; exact checkpoint and request logs unavailable."
+  },
+  "limitations": [
+    "Different prompts and reference-conditioning workflows; no causal ranking of models.",
+    "Basket contents differ by requested brief: reference apples/cloth, GPT intentionally empty, FLUX strawberries. This difference is not a model failure.",
+    "GPT is modular assembly; FLUX outputs are whole images.",
+    "Two subjects only; no collection reliability claim.",
+    "No verified cost or timing logs for this comparison."
+  ],
+  "findings_ru": {
+    "cup": "Последний GPT ближе к характеру референса по форме, керамике и детальности. Цветок, каёмка и пар отражают более подробное задание, а не доказанную неспособность FLUX. LoRA умеренно меняет чашку и сильнее фон.",
+    "basket": "GPT лучше сохраняет плетение и скрученную ручку. Пустая корзина была запрошена намеренно; различие в наполнении не является недостатком модели. LoRA укрупняет плетение и казуализирует ягоды, но ручка и материалы чрезмерно игрушечные. Без LoRA слишком много тонких прутьев.",
+    "composition": "У FLUX цельнее контакт с фоном. Последняя GPT-модульная сборка выглядит подвешенной, объекты велики, нет поверхности как у референсов. Это недостаток сборки, не только генератора.",
+    "decision": "Сохранять последнюю GPT-арт-дирекцию; доработать композицию сборки. LoRA оставить кандидатом и проверить на одинаковых подробных заданиях; наполнение корзины оценивать только при совпадающих требованиях."
+  }
+}
