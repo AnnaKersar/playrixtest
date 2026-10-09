@@ -33,14 +33,14 @@ export async function mockPNG(width=860,height=960) {
   const rgba=new Uint8Array(width*height*4);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const dx=(x-width/2)/(width*.32),dy=(y-height*.49)/(height*.33),hole=(x-width*.58)**2+(y-height*.43)**2<(width*.07)**2;if(dx*dx+dy*dy<1&&!hole){const i=(y*width+x)*4;rgba.set([70,175,204,255],i);}}return encodePNG(width,height,rgba);
 }
 // Separable Lanczos-3 with premultiplied alpha; PNG output keeps transparent holes.
-export async function finalPNG(bytes) {
-  const src=await decodePNG(bytes);if(src.width!==1376||src.height!==1536||src.channels!==4)throw Error('Expected native 1376x1536 RGBA8');
+export async function finalPNG(bytes,onPhase=async()=>{}) {
+  await onPhase('decoding_png');const src=await decodePNG(bytes);await onPhase('resizing_png');if(src.width!==1376||src.height!==1536||src.channels!==4)throw Error('Expected native 1376x1536 RGBA8');
   const w=860,h=960,scale=src.width/w,sinc=x=>x===0?1:Math.sin(Math.PI*x)/(Math.PI*x),kernel=x=>Math.abs(x)<3?sinc(x)*sinc(x/3):0;
   const weights=(out,size)=>Array.from({length:out},(_,i)=>{const center=(i+.5)*scale-.5,items=[];let total=0;for(let j=Math.ceil(center-3*scale);j<=Math.floor(center+3*scale);j++){const k=kernel((j-center)/scale);items.push([Math.max(0,Math.min(size-1,j)),k]);total+=k;}return items.map(([j,k])=>[j,k/total]);});
-  const wx=weights(w,src.width),wy=weights(h,src.height),tmp=new Float32Array(w*src.height*4),out=new Uint8Array(w*h*4);
-  for(let y=0;y<src.height;y++)for(let x=0;x<w;x++){const dest=(y*w+x)*4;for(const [sx,k]of wx[x]){const p=(y*src.width+sx)*4,a=src.rgba[p+3]/255;tmp[dest]+=src.rgba[p]*a*k;tmp[dest+1]+=src.rgba[p+1]*a*k;tmp[dest+2]+=src.rgba[p+2]*a*k;tmp[dest+3]+=a*k;}}
-  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4;for(const [sy,k]of wy[y]){const q=(sy*w+x)*4;val[0]+=tmp[q]*k;val[1]+=tmp[q+1]*k;val[2]+=tmp[q+2]*k;val[3]+=tmp[q+3]*k;}const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}
-  return encodePNG(w,h,out);
+  const wx=weights(w,src.width),wy=weights(h,src.height),out=new Uint8Array(w*h*4),rows=new Map();
+  const horizontal=sy=>{if(rows.has(sy))return rows.get(sy);const row=new Float32Array(w*4);for(let x=0;x<w;x++){const dest=x*4;for(const [sx,k]of wx[x]){const p=(sy*src.width+sx)*4,a=src.rgba[p+3]/255;row[dest]+=src.rgba[p]*a*k;row[dest+1]+=src.rgba[p+1]*a*k;row[dest+2]+=src.rgba[p+2]*a*k;row[dest+3]+=a*k;}}rows.set(sy,row);return row;};
+  for(let y=0;y<h;y++){const minRow=Math.min(...wy[y].map(item=>item[0]));for(const sy of rows.keys())if(sy<minRow)rows.delete(sy);const inputs=wy[y].map(([sy,k])=>[horizontal(sy),k]);for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4,q=x*4;for(const [row,k]of inputs){val[0]+=row[q]*k;val[1]+=row[q+1]*k;val[2]+=row[q+2]*k;val[3]+=row[q+3]*k;}const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}}
+  await onPhase('encoding_png');return encodePNG(w,h,out);
 }
 
 // For SHA-pinned reference sheets only. Keep full pixel decoding for generated images.

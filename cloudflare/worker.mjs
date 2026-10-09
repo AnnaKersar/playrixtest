@@ -51,11 +51,11 @@ async function createRun(env,body,auth){
 }
 async function finishReceipt(env,job,attempt){
   const receipt=await getJSON(env,attempt.receipt_key),raw=await env.ARTIFACTS.get(receipt.raw_key);if(!raw)throw Error('Missing stored raw PNG');const bytes=new Uint8Array(await raw.arrayBuffer());if(await sha(bytes)!==receipt.raw_sha256)throw Error('Stored raw SHA mismatch');
-  const final=await finalPNG(bytes),finalKey=`runs/${job.run_id}/${job.object_id}/final.png`,manifestKey=`runs/${job.run_id}/${job.object_id}/manifest.json`;
+  const final=await finalPNG(bytes,stage=>queueDiagnostic(env,job.id,stage)),finalKey=`runs/${job.run_id}/${job.object_id}/final.png`,manifestKey=`runs/${job.run_id}/${job.object_id}/manifest.json`;
   const manifest={version:'image-result/v1',job_id:job.id,mode:attempt.mode,provider:PROVIDER_VERSION,model:IMAGE_MODEL,native:[1376,1536],final:[860,960],resampler:'premultiplied-lanczos3-js/v1',raw_sha256:receipt.raw_sha256,final_sha256:await sha(final),request_id:receipt.request_id,usage:receipt.usage,cost_nanodollars:receipt.cost,artistic_review:'unreviewed',alpha:'RGBA8',raw_key:receipt.raw_key,final_key:finalKey};
-  await env.ARTIFACTS.put(finalKey,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,manifestKey,manifest);
+  await queueDiagnostic(env,job.id,'writing_artifacts');await env.ARTIFACTS.put(finalKey,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,manifestKey,manifest);
   if(await one(env,'SELECT attempt_id FROM experiment_journal WHERE attempt_id=?',job.id))await journalEvent(env,job.id,'storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:[860,960]});
-  await env.DB.batch([query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)]);
+  await queueDiagnostic(env,job.id,'updating_records');await env.DB.batch([query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)]);
 }
 export async function processJob(env,jobId,deps={}){
   await queueDiagnostic(env,jobId,'worker_received');
