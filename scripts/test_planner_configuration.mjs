@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {plannerConfiguration,createPlan} from '../cloudflare/text-planner.mjs';
+assert.equal(plannerConfiguration({}).ready,false);assert.equal(plannerConfiguration({}).missing.length,2);
+const valid={TEXT_PRICE_NANODOLLARS_PER_TOKEN:JSON.stringify({input:1,cached:0,output:2}),TEXT_RESERVATION_NANODOLLARS:'100'};
+assert.deepEqual(plannerConfiguration(valid),{ready:true,missing:[]});
+for(const value of ['invalid','null','{}','{"input":1,"cached":0,"output":0}'])assert.match(plannerConfiguration({...valid,TEXT_PRICE_NANODOLLARS_PER_TOKEN:value}).missing[0],/TEXT_PRICE/);
+for(const value of ['0','-1','NaN','1.5'])assert.match(plannerConfiguration({...valid,TEXT_RESERVATION_NANODOLLARS:value}).missing[0],/TEXT_RESERVATION/);
+let storage=0,queue=0;const env={LIVE_PLANNER_ENABLED:'true',OPENAI_API_KEY:'synthetic',DB:{prepare(sql){return {async first(){return sql.includes('FROM budget')?{approved:1,ceiling:100000000000,historical_known:0,historical_unknown:0}:{committed:0,unresolved:0,guests:0}}}}},ARTIFACTS:{async get(){storage++;throw Error('must not access')}},IMAGE_JOBS:{async send(){queue++}}};
+await assert.rejects(createPlan(env,{theme:'Bakery',requestId:'fixture',approval:'I approve one paid planner attempt'},{role:'owner',principalId:'owner'}),e=>e.status===503&&e.message.includes('TEXT_PRICE_NANODOLLARS_PER_TOKEN')&&e.message.includes('TEXT_RESERVATION_NANODOLLARS'));
+assert.equal(storage,0);assert.equal(queue,0);console.log('PASS missing/invalid planner settings fail before storage, queue and provider; approved values pass');
