@@ -1,0 +1,3 @@
+const valid=value=>typeof value==='string'&&/^[a-zA-Z0-9_-]{1,200}$/.test(value);
+export function cardActions(run,job){if(!valid(run)||!valid(job.id))throw Error('Invalid card identity');return {download:'/api/asset?job='+encodeURIComponent(job.id),filename:(job.name||job.object_id||job.id).replace(/[^a-zA-Z0-9а-яА-ЯёЁ_-]+/g,'_').slice(0,100)+'.png',test:'/studio/index.html?run='+encodeURIComponent(run)+'&job='+encodeURIComponent(job.id)};}
+export function testTarget(search){const query=new URLSearchParams(search),run=query.get('run'),job=query.get('job');if(!run&&!job)return null;if(!valid(run)||(job!==null&&!valid(job)))throw Error('Некорректная ссылка на карточку');return {run,job};}
