@@ -33,6 +33,7 @@ export async function sessionEndpoint(request,env){
 }
 const publicPaths=new Set(['/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
+for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json'])publicPaths.add('/archive-seed/history-v1/'+file);
 const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
 export function createPublicGuestWorker(backend){return {
