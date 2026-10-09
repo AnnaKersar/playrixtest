@@ -1,15 +1,3 @@
-{
-  "name": "card-studio",
-  "main": "worker.mjs",
-  "compatibility_date": "2026-10-09",
-  "workers_dev": false,
-  "preview_urls": false,
-  "assets": {"directory": "../public", "binding": "ASSETS", "run_worker_first": true},
-  "vars": {"LIVE_GENERATION_ENABLED": "false"},
-  "d1_databases": [{"binding": "DB", "database_name": "card-studio", "database_id": "REPLACE_ONLY_AFTER_APPROVAL"}],
-  "r2_buckets": [{"binding": "ARTIFACTS", "bucket_name": "REPLACE_ONLY_AFTER_APPROVAL"}],
-  "queues": {
-    "producers": [{"binding": "IMAGE_JOBS", "queue": "REPLACE_ONLY_AFTER_APPROVAL"}],
-    "consumers": [{"queue": "REPLACE_ONLY_AFTER_APPROVAL", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 0, "max_concurrency": 1}]
-  }
-}
+// Use root wrangler.jsonc for auth-only bootstrap.
+// Add explicit existing resources with scripts/configure_worker.mjs.
+// No placeholder declarations: avoid implicit provisioning.

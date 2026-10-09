@@ -15,3 +15,7 @@ scripts/add_run_links.py
 scripts/make_planner_schema.py
 scripts/qa-*-body.txt
 scripts/qa-body.txt
+
+wrangler.generated.jsonc
+.wrangler/
+.dev.vars*
