@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {archivePublic,validateArchive} from '../cloudflare/experiment-archive.mjs';
+import {sha} from '../cloudflare/provider.mjs';
+const root='cloudflare/visitor-public/archive-seed/history-v1/';
+const manifest=validateArchive(JSON.parse(await fs.readFile(root+'archive-manifest.json','utf8')));
+const assets={async fetch(req){const u=new URL(req.url);assert(u.pathname.startsWith('/archive-seed/history-v1/'));try{const data=await fs.readFile('cloudflare/visitor-public'+u.pathname);return new Response(req.method==='HEAD'?null:data,{headers:{'Content-Type':u.pathname.endsWith('.json')?'application/json':'image/png'}})}catch{return new Response(null,{status:404})}}};
+const env={ASSETS:assets,ARTIFACTS:{async get(){return null}}};
+const req=(path,method='GET',e=env)=>archivePublic(new Request('https://test.invalid'+path,{method}),e);
+assert.equal((await req('/api/archive')).status,200);
+assert.equal((await req('/api/archive','HEAD')).body,null);
+assert.equal((await req('/api/archive','POST')).status,405);
+for(const a of manifest.assets){const r=await req('/api/archive/image/'+a.sha256);assert.equal(r.status,200);assert.equal(r.headers.get('Content-Type'),a.mime);const b=new Uint8Array(await r.arrayBuffer());assert.equal(b.length,a.bytes);assert.equal(await sha(b),a.sha256);}
+for(const path of ['/api/archive/image/'+'0'.repeat(64),'/api/archive/image/private','/api/archive/image/%2e%2e%2fsecret'])assert.equal((await req(path)).status,404);
+const active={...manifest,entries:[],assets:[]};
+const override={ASSETS:{fetch(){throw Error('Must not consult seed while active archive exists')}},ARTIFACTS:{async get(k){assert.equal(k,'experiment-archive/active.json');return {text:async()=>JSON.stringify(active)}}}};
+assert.equal((await (await req('/api/archive','GET',override)).json()).assets.length,0);
+assert.equal((await req('/api/archive/image/'+manifest.assets[0].sha256,'GET',override)).status,404);
+assert.equal((await req('/api/archive','GET',{ASSETS:assets})).status,200);
+assert.equal((await req('/api/archive','GET',{})).status,404);
+assert.equal((await req('/api/archive','GET',{ASSETS:assets,ARTIFACTS:{async get(){throw Error('R2 failure')}}})).status,503);
+const missing=JSON.parse(await fs.readFile(root+'missing-media.json','utf8'));
+assert.equal(manifest.entries.length,57);assert.equal(manifest.chapters.length,6);
+assert.equal(manifest.entries.at(-1).images.length,160);
+assert(manifest.entries.every(e=>['hypothesis','change','testMethod','result','feedback','decision','evidence'].every(k=>typeof e[k]==='string'&&e[k].length)));
+const text=JSON.stringify(manifest)+JSON.stringify(missing);
+assert(!/libfile_|file_0{6}|https:\/\/(?:drive|docs)\.google|sk-proj-|[A-Z]:\\Users/.test(text));
+console.log(JSON.stringify({passed:true,entries:manifest.entries.length,chapters:manifest.chapters.length,verifiedImages:manifest.assets.length,missingRecords:missing.records.length,activeArchivePrecedence:true,anonymousReadOnly:true,privateKeysBlocked:true,paidCalls:0}));

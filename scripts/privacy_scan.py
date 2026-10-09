@@ -13,6 +13,10 @@ for name in files:
   if name.startswith('cloudflare/visitor-public/reference-seed/original160-v1/') and p.suffix.lower()=='.png':
    manifest=json.loads((root/'cloudflare/visitor-public/reference-seed/original160-v1/manifest.json').read_text(encoding='utf-8'))
    approved=any(p.name==r['id']+'.png' and hashlib.sha256(p.read_bytes()).hexdigest()==r['sha256'] for r in manifest['references'])
+  if name.startswith('cloudflare/visitor-public/archive-seed/history-v1/') and p.suffix.lower() in {'.png','.jpg','.webp'}:
+   manifest=json.loads((root/'cloudflare/visitor-public/archive-seed/history-v1/archive-manifest.json').read_text(encoding='utf-8'))
+   data=p.read_bytes()
+   approved=any(p.stem==a['sha256'] and len(data)==a['bytes'] and hashlib.sha256(data).hexdigest()==a['sha256'] and p.suffix==('.jpg' if a['mime']=='image/jpeg' else '.'+a['mime'].split('/')[1]) for a in manifest['assets'])
   if not approved:issues.append((name,'binary/private artifact'))
   continue
  text=p.read_text(encoding='utf8')

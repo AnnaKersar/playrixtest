@@ -14,7 +14,38 @@ export function validateArchive(m){
 async function bounded(request,max){const reader=request.body?.getReader();if(!reader)fail('Body required');let size=0;const chunks=[];while(true){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>max){await reader.cancel();fail('File too large',413);}chunks.push(value);}return new Uint8Array(await new Blob(chunks).arrayBuffer());}
 const manifestKey=h=>'experiment-archive/staging/'+h+'.json',assetKey=h=>'experiment-archive/images/'+h;
 async function getManifest(env,key){const obj=await env.ARTIFACTS.get(key);if(!obj)return null;return validateArchive(JSON.parse(await obj.text()));}
-export async function archivePublic(request,env){try{if(!env.ARTIFACTS)return json({error:'Архив ещё не подключён'},503);if(!['GET','HEAD'].includes(request.method))return json({error:'Read only'},405);const url=new URL(request.url),m=await getManifest(env,ACTIVE);if(!m)return json({error:'Архив готовится. Проверенные материалы ещё не опубликованы.'},404);if(url.pathname==='/api/archive')return json(m);const h=url.pathname.slice('/api/archive/image/'.length);if(!HASH.test(h)||!m.assets.some(a=>a.sha256===h))return json({error:'Not found'},404);const obj=await env.ARTIFACTS.get(assetKey(h));if(!obj)return json({error:'Not found'},404);const a=m.assets.find(a=>a.sha256===h);return new Response(request.method==='HEAD'?null:obj.body,{headers:{'Content-Type':a.mime,'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="'+h+'.'+(a.mime==='image/jpeg'?'jpg':a.mime.split('/')[1])+'"'}});}catch{return json({error:'Archive unavailable'},503);}}
+const SEED='/archive-seed/history-v1/';
+async function publicManifest(request,env){
+ const active=env.ARTIFACTS?await getManifest(env,ACTIVE):null;
+ if(active)return {manifest:active,seed:false};
+ if(!env.ASSETS)return null;
+ const response=await env.ASSETS.fetch(new Request(new URL(SEED+'archive-manifest.json',request.url)));
+ if(!response.ok)return null;
+ return {manifest:validateArchive(await response.json()),seed:true};
+}
+export async function archivePublic(request,env){
+ try{
+  if(!['GET','HEAD'].includes(request.method))return json({error:'Read only'},405);
+  const url=new URL(request.url),source=await publicManifest(request,env);
+  if(!source)return json({error:'Архив ещё не опубликован.'},404);
+  const m=source.manifest;
+  if(url.pathname==='/api/archive')return request.method==='HEAD'?new Response(null,{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}}):json(m);
+  const h=url.pathname.slice('/api/archive/image/'.length),a=m.assets.find(a=>a.sha256===h);
+  if(!HASH.test(h)||!a)return json({error:'Not found'},404);
+  const ext=a.mime==='image/jpeg'?'jpg':a.mime.split('/')[1];
+  let body;
+  if(source.seed){
+   const asset=await env.ASSETS.fetch(new Request(new URL(SEED+h+'.'+ext,request.url),{method:request.method}));
+   if(!asset.ok)return json({error:'Not found'},404);
+   body=asset.body;
+  }else{
+   const obj=await env.ARTIFACTS.get(assetKey(h));
+   if(!obj)return json({error:'Not found'},404);
+   body=obj.body;
+  }
+  return new Response(request.method==='HEAD'?null:body,{headers:{'Content-Type':a.mime,'Cache-Control':'public, max-age=3600','X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="'+h+'.'+ext+'"'}});
+ }catch{return json({error:'Archive unavailable'},503);}
+}
 export async function archiveImport(request,env){try{if(request.method!=='POST'||request.headers.get('Origin')!==new URL(request.url).origin)return json({error:'Same-origin POST required'},403);if(!env.ARTIFACTS)return json({error:'Private R2 binding missing'},503);const url=new URL(request.url),op=url.pathname.split('/').at(-1);
  if(op==='prepare'){const bytes=await bounded(request,2000000),m=validateArchive(JSON.parse(new TextDecoder().decode(bytes))),text=JSON.stringify(m),hash=await sha(text);await env.ARTIFACTS.put(manifestKey(hash),text);return json({manifestHash:hash,images:m.assets.length,experiments:m.entries.length});}
  const h=url.searchParams.get('manifest');if(!HASH.test(h||''))fail('Invalid manifest ID');const m=await getManifest(env,manifestKey(h));if(!m)fail('Prepare archive first',404);
