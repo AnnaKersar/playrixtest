@@ -18,6 +18,16 @@
       "bucket_name": "playrixtest-artifacts"
     }
   ],
+  "queues": {
+    "producers": [{ "binding": "IMAGE_JOBS", "queue": "playrixtest-image-jobs" }],
+    "consumers": [{
+      "queue": "playrixtest-image-jobs",
+      "max_batch_size": 1,
+      "max_batch_timeout": 1,
+      "max_retries": 0,
+      "max_concurrency": 1
+    }]
+  },
   "assets": {
     "directory": "cloudflare/visitor-public",
     "binding": "ASSETS",
