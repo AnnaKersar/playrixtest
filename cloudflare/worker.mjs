@@ -8,7 +8,7 @@ import {createPlan,processPlan,recoverPlan,plannerConfiguration} from './text-pl
 import {privateEditor} from './private-editor.mjs';
 import { authenticate } from './auth.mjs';
 import { sha, imageRequest, IMAGE_MODEL, PROVIDER_VERSION, usageCost } from './provider.mjs';
-import { mockPNG, finalPNG, decodePNG } from './png.mjs';
+import { mockPNG, finalPNG, decodePNG, pinnedReferencePNG } from './png.mjs';
 import { planMock, PLANNER_VERSION } from './planner-contract.mjs';
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
@@ -29,7 +29,7 @@ async function references(env,{manifestOnly=false}={}){
   if(m.version!=='reference-pack/v1'||m.reference_count!==50||m.model!==IMAGE_MODEL||m.art_direction_sha256!==env.APPROVED_ART_DIRECTION_SHA256||typeof m.art_direction!=='string'||await sha(m.art_direction)!==m.art_direction_sha256||!Array.isArray(m.sheets)||m.sheets.length!==13)throw Error('Frozen reference contract mismatch');
   if(m.sheets.some((s,i)=>s.count!==(i===12?2:4)||!s.key?.startsWith('references/')||!/^[a-f0-9]{64}$/.test(s.sha256)))throw Error('Reference sheet contract mismatch');
   if(manifestOnly)return {manifest:m,sheets:[]};
-  const sheets=[];for(const s of m.sheets){const o=await env.ARTIFACTS.get(s.key);if(!o)throw Error('Missing sheet');const bytes=new Uint8Array(await o.arrayBuffer());if(await sha(bytes)!==s.sha256)throw Error('Reference SHA mismatch');const image=await decodePNG(bytes);if(image.width!==896||image.height!==1040)throw Error('Reference dimensions');sheets.push(bytes);}return {manifest:m,sheets};
+  const sheets=[];for(const s of m.sheets){const o=await env.ARTIFACTS.get(s.key);if(!o)throw Error('Missing sheet');const bytes=new Uint8Array(await o.arrayBuffer());if(await sha(bytes)!==s.sha256)throw Error('Reference SHA mismatch');pinnedReferencePNG(bytes);sheets.push(bytes);}return {manifest:m,sheets};
 }
 async function dispatch(env){const rows=await all(env,"SELECT job_id FROM outbox WHERE state='pending' LIMIT 100");let count=0;for(const row of rows){await env.IMAGE_JOBS.send({version:1,jobId:row.job_id});await query(env,"UPDATE outbox SET state='sent' WHERE job_id=?",row.job_id).run();count++;}return count;}
 async function createRun(env,body,auth){

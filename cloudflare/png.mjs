@@ -42,3 +42,13 @@ export async function finalPNG(bytes) {
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4;for(const [sy,k]of wy[y])for(let c=0;c<4;c++)val[c]+=tmp[(sy*w+x)*4+c]*k;const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}
   return encodePNG(w,h,out);
 }
+
+// For SHA-pinned reference sheets only. Keep full pixel decoding for generated images.
+export function pinnedReferencePNG(bytes){
+ if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024||!sig.every((n,i)=>bytes[i]===n))throw Error('Invalid reference PNG');
+ const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);if(v.getUint32(8)!==13||new TextDecoder().decode(bytes.subarray(12,16))!=='IHDR'||crc(bytes.subarray(12,29))!==v.getUint32(29))throw Error('Reference PNG header');
+ const width=v.getUint32(16),height=v.getUint32(20),channels=bytes[25]===6?4:bytes[25]===2?3:0;
+ if(width!==896||height!==1040||bytes[24]!==8||!channels||bytes[26]||bytes[27]||bytes[28])throw Error('Unsupported reference PNG format or dimensions');
+ let p=33,idat=false,ended=false;while(p+12<=bytes.length){const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated reference PNG');const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(type==='IHDR'||type==='tRNS')throw Error('Unsupported reference PNG chunk');if(type==='IDAT'){if(n)idat=true;}if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('Invalid reference PNG end');ended=true;break;}p+=n+12;}
+ if(!idat||!ended)throw Error('Incomplete reference PNG');return {width,height,channels};
+}
