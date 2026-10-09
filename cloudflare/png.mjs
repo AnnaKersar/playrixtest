@@ -26,8 +26,8 @@ export async function decodePNG(bytes) {
   while(true){const {value,done}=await reader.read();if(done)break;count+=value.length;if(count>expected){await reader.cancel();throw Error('PNG inflated size');}segments.push(value);}
   if(count!==expected)throw Error('PNG scanline size');const scan=concat(segments),stride=width*channels,raw=new Uint8Array(height*stride);
   const paeth=(a,b,c)=>{const x=a+b-c,pa=Math.abs(x-a),pb=Math.abs(x-b),pc=Math.abs(x-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c;};
-  for(let y=0;y<height;y++){const f=scan[y*(stride+1)];if(f>4)throw Error('PNG filter');for(let x=0;x<stride;x++){const i=y*stride+x,a=x>=channels?raw[i-channels]:0,b=y?raw[i-stride]:0,c=y&&x>=channels?raw[i-stride-channels]:0;raw[i]=(scan[y*(stride+1)+1+x]+[0,a,b,(a+b)>>1,paeth(a,b,c)][f])&255;}}
-  const rgba=new Uint8Array(width*height*4);for(let i=0;i<width*height;i++){rgba.set(raw.subarray(i*channels,i*channels+3),i*4);rgba[i*4+3]=channels===4?raw[i*4+3]:255;}return {width,height,rgba,channels};
+  for(let y=0;y<height;y++){const f=scan[y*(stride+1)];if(f>4)throw Error('PNG filter');for(let x=0;x<stride;x++){const i=y*stride+x,a=x>=channels?raw[i-channels]:0,b=y?raw[i-stride]:0,c=y&&x>=channels?raw[i-stride-channels]:0;const predictor=f===0?0:f===1?a:f===2?b:f===3?(a+b)>>1:paeth(a,b,c);raw[i]=(scan[y*(stride+1)+1+x]+predictor)&255;}}
+  const rgba=new Uint8Array(width*height*4);for(let i=0;i<width*height;i++){const s=i*channels,d=i*4;rgba[d]=raw[s];rgba[d+1]=raw[s+1];rgba[d+2]=raw[s+2];rgba[d+3]=channels===4?raw[s+3]:255;}return {width,height,rgba,channels};
 }
 export async function mockPNG(width=860,height=960) {
   const rgba=new Uint8Array(width*height*4);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const dx=(x-width/2)/(width*.32),dy=(y-height*.49)/(height*.33),hole=(x-width*.58)**2+(y-height*.43)**2<(width*.07)**2;if(dx*dx+dy*dy<1&&!hole){const i=(y*width+x)*4;rgba.set([70,175,204,255],i);}}return encodePNG(width,height,rgba);
@@ -38,8 +38,8 @@ export async function finalPNG(bytes) {
   const w=860,h=960,scale=src.width/w,sinc=x=>x===0?1:Math.sin(Math.PI*x)/(Math.PI*x),kernel=x=>Math.abs(x)<3?sinc(x)*sinc(x/3):0;
   const weights=(out,size)=>Array.from({length:out},(_,i)=>{const center=(i+.5)*scale-.5,items=[];let total=0;for(let j=Math.ceil(center-3*scale);j<=Math.floor(center+3*scale);j++){const k=kernel((j-center)/scale);items.push([Math.max(0,Math.min(size-1,j)),k]);total+=k;}return items.map(([j,k])=>[j,k/total]);});
   const wx=weights(w,src.width),wy=weights(h,src.height),tmp=new Float32Array(w*src.height*4),out=new Uint8Array(w*h*4);
-  for(let y=0;y<src.height;y++)for(let x=0;x<w;x++){const dest=(y*w+x)*4;for(const [sx,k]of wx[x]){const p=(y*src.width+sx)*4,a=src.rgba[p+3]/255;for(let c=0;c<3;c++)tmp[dest+c]+=src.rgba[p+c]*a*k;tmp[dest+3]+=a*k;}}
-  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4;for(const [sy,k]of wy[y])for(let c=0;c<4;c++)val[c]+=tmp[(sy*w+x)*4+c]*k;const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}
+  for(let y=0;y<src.height;y++)for(let x=0;x<w;x++){const dest=(y*w+x)*4;for(const [sx,k]of wx[x]){const p=(y*src.width+sx)*4,a=src.rgba[p+3]/255;tmp[dest]+=src.rgba[p]*a*k;tmp[dest+1]+=src.rgba[p+1]*a*k;tmp[dest+2]+=src.rgba[p+2]*a*k;tmp[dest+3]+=a*k;}}
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4;for(const [sy,k]of wy[y]){const q=(sy*w+x)*4;val[0]+=tmp[q]*k;val[1]+=tmp[q+1]*k;val[2]+=tmp[q+2]*k;val[3]+=tmp[q+3]*k;}const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}
   return encodePNG(w,h,out);
 }
 
