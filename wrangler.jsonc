@@ -12,6 +12,12 @@
       "database_id": "11ec038b-156d-42de-9ac8-fec35f439a07"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "ARTIFACTS",
+      "bucket_name": "playrixtest-artifacts"
+    }
+  ],
   "assets": {
     "directory": "cloudflare/visitor-public",
     "binding": "ASSETS",
