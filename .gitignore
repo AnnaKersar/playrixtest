@@ -19,3 +19,5 @@ scripts/qa-body.txt
 wrangler.generated.jsonc
 .wrangler/
 .dev.vars*
+
+build/

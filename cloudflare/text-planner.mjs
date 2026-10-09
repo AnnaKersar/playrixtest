@@ -1,0 +1,52 @@
+import {generationRole} from './roles.mjs';
+import {sha} from './provider.mjs';
+import {plannerPrompt,plannerSchema,PLANNER_VERSION} from './planner-contract.mjs';
+import {budgetState,claimPaid,reservationFor} from './budget.mjs';
+export const TEXT_MODEL='gpt-6-sol';
+export function strictSchema(s){const o=structuredClone(s);delete o.$schema;if(o.enum&&!o.type)o.type='string';if(o.type==='object'){o.additionalProperties=false;o.required=Object.keys(o.properties);for(const k of o.required)o.properties[k]=strictSchema(o.properties[k]);}if(o.items)o.items=strictSchema(o.items);return o;}
+export function validate(s,v,path='$'){
+ if(s.enum&&!s.enum.includes(v))throw Error(path+' enum');if(s.type==='string'&&(typeof v!=='string'||v.length>16000||(s.pattern&&!new RegExp(s.pattern).test(v))))throw Error(path+' string');
+ if(s.type==='object'){if(!v||typeof v!=='object'||Array.isArray(v))throw Error(path+' object');for(const k of s.required||[])if(!(k in v))throw Error(path+'.'+k+' required');for(const k of Object.keys(v)){if(!s.properties[k])throw Error(path+'.'+k+' unknown');validate(s.properties[k],v[k],path+'.'+k);}}
+ if(s.type==='array'){if(!Array.isArray(v)||v.length>100)throw Error(path+' array');v.forEach((x,i)=>validate(s.items,x,path+'['+i+']'));}
+}
+export function textCost(usage,price){const input=usage?.input_tokens,output=usage?.output_tokens,cached=usage?.input_tokens_details?.cached_tokens??0;if(![input,output,cached].every(n=>Number.isSafeInteger(n)&&n>=0)||cached>input)return null;const value=(input-cached)*price.input+cached*price.cached+output*price.output;return Number.isSafeInteger(value)?value:null;}
+function prices(env){let p;try{p=JSON.parse(env.TEXT_PRICE_NANODOLLARS_PER_TOKEN);}catch{throw Error('Approved text prices required');}if(!p||!['input','cached','output'].every(k=>Number.isSafeInteger(p[k])&&p[k]>=0)||!p.output)throw Error('Invalid text prices');return p;}
+export async function textRequest(env,frozen,fetcher=fetch){
+ if(env.LIVE_PLANNER_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live planner disabled');
+ const response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',redirect:'error',signal:AbortSignal.timeout(180000),headers:{Authorization:'Bearer '+env.OPENAI_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({model:TEXT_MODEL,store:false,max_output_tokens:12000,input:[{role:'developer',content:plannerPrompt},{role:'user',content:JSON.stringify(frozen.input)}],text:{format:{type:'json_schema',name:'collection_plan',strict:true,schema:strictSchema(plannerSchema)}}})});
+ if(!response.ok)throw Error('Planner HTTP '+response.status);return {payload:await response.json(),requestId:response.headers.get('x-request-id')};
+}
+export function parsePlan(payload,frozen){
+ if(payload.status!=='completed')throw Error('Incomplete planner response');const content=(payload.output||[]).flatMap(o=>o.content||[]);if(content.some(c=>c.type==='refusal'))throw Error('Planner refusal');const text=content.filter(c=>c.type==='output_text').map(c=>c.text).join('');if(text.length>1000000)throw Error('Planner output too large');const plan=JSON.parse(text);validate(strictSchema(plannerSchema),plan);
+ if(plan.art_direction_sha256!==frozen.input.immutable_art_direction.sha256||plan.art_direction_version!==frozen.input.immutable_art_direction.version)throw Error('Art Direction changed');const objects=plan.collections.flatMap(c=>c.objects);if(!objects.length||objects.length>20||new Set(objects.map(o=>o.object_id)).size!==objects.length)throw Error('Invalid object inventory');
+ if(objects.some(o=>o.production_category==='C3'&&o.asset_stage!=='object_with_surface'))throw Error('C3 requires meaningful surface');
+ return {version:PLANNER_VERSION,provider:'openai',llm_inference:true,review_required:true,...plan,objects:objects.map(o=>({object_id:o.object_id,name:o.main_identity,brief:o.object_brief}))};
+}
+export async function createPlan(env,b,auth){
+ generationRole(auth);
+ if(env.LIVE_PLANNER_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Object.assign(Error('Live planner disabled'),{status:403});
+ if(b.approval!=='I approve one paid planner attempt'||typeof b.requestId!=='string'||!/^[a-zA-Z0-9_-]{1,90}$/.test(b.requestId))throw Object.assign(Error('Approval and stable requestId required'),{status:400});
+ if(typeof b.theme!=='string'||!b.theme.trim()||b.theme.length>4000||typeof(b.gd_brief||'')!=='string'||(b.gd_brief||'').length>8000)throw Object.assign(Error('Invalid planner input'),{status:400});
+ const state=await budgetState(env);if(state.live_blockers.length)throw Object.assign(Error(state.live_blockers.join(', ')),{status:409});
+ const p=prices(env),reservation=reservationFor(env,'text',auth.principalId);if(!Number.isSafeInteger(reservation)||reservation<=0)throw Error('Explicit text reservation required');
+ const ref=await env.ARTIFACTS.get(env.REFERENCE_MANIFEST_KEY);if(!ref)throw Error('Pinned Art Direction missing');const refText=await ref.text();if(await sha(refText)!==env.APPROVED_REFERENCE_MANIFEST_SHA256)throw Error('Private manifest pin mismatch');const m=JSON.parse(refText);if(!m.art_direction_version||await sha(m.art_direction)!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Art Direction pin/version missing');
+ const frozen={version:'planner-input/v1',principal_id:auth.principalId,model:TEXT_MODEL,planner_version:PLANNER_VERSION,prompt_sha256:await sha(plannerPrompt),schema_sha256:await sha(JSON.stringify(strictSchema(plannerSchema))),prices:p,reservation,input:{category:b.theme,gd_brief:b.gd_brief||'',immutable_art_direction:{version:m.art_direction_version,sha256:env.APPROVED_ART_DIRECTION_SHA256,text:m.art_direction}}};
+ const text=JSON.stringify(frozen),hash=await sha(text),requestId='planner_'+(await sha(auth.principalId+'|'+b.requestId)).slice(0,48),key='planner/'+requestId+'/input-'+hash+'.json';
+ await env.ARTIFACTS.put(key,text);await env.DB.prepare('INSERT OR IGNORE INTO planner_requests (id,input_key,input_sha,status,principal_id) VALUES (?,?,?,?,?)').bind(requestId,key,hash,'queued',auth.principalId).run();const saved=await env.DB.prepare('SELECT * FROM planner_requests WHERE id=?').bind(requestId).first();if(saved.input_sha!==hash)throw Object.assign(Error('requestId input conflict'),{status:409});
+ let pending=false;try{await env.IMAGE_JOBS.send({version:1,kind:'planner',jobId:requestId});}catch{pending=true;}return {requestId,status:saved.status,queue_pending:pending};
+}
+export async function processPlan(env,requestId,provider=textRequest){
+ const row=await env.DB.prepare('SELECT * FROM planner_requests WHERE id=?').bind(requestId).first();if(!row)return;if(await env.DB.prepare('SELECT job_id FROM attempts WHERE job_id=?').bind(requestId).first())return;
+ const source=await env.ARTIFACTS.get(row.input_key);if(!source)throw Error('Planner frozen input missing');const text=await source.text();if(await sha(text)!==row.input_sha)throw Error('Planner frozen hash mismatch');const frozen=JSON.parse(text);
+ if(env.LIVE_PLANNER_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Planner disabled');
+ if(frozen.prompt_sha256!==await sha(plannerPrompt)||frozen.schema_sha256!==await sha(JSON.stringify(strictSchema(plannerSchema))))throw Error('Planner contract changed');
+ if(!await claimPaid(env,requestId,frozen.reservation,row.principal_id)){await env.DB.prepare("UPDATE planner_requests SET status='blocked' WHERE id=?").bind(requestId).run();return;}
+ try{const receipt=await provider(env,frozen),key='planner/'+requestId+'/receipt.json';await env.ARTIFACTS.put(key,JSON.stringify(receipt));await env.DB.prepare("UPDATE attempts SET receipt_key=?,status='received' WHERE job_id=?").bind(key,requestId).run();await recoverPlan(env,requestId);}catch(e){await env.DB.batch([env.DB.prepare("UPDATE attempts SET status='unknown',error=? WHERE job_id=?").bind(String(e.message).slice(0,300),requestId),env.DB.prepare("UPDATE planner_requests SET status='needs_review' WHERE id=?").bind(requestId)]);}
+}
+export async function recoverPlan(env,requestId){
+ const row=await env.DB.prepare('SELECT * FROM planner_requests WHERE id=?').bind(requestId).first(),attempt=await env.DB.prepare('SELECT * FROM attempts WHERE job_id=?').bind(requestId).first();if(!row||!attempt)throw Error('No planner attempt');const stored=await env.ARTIFACTS.get('planner/'+requestId+'/receipt.json');if(!stored)throw Object.assign(Error('No durable receipt; billing reconciliation required'),{status:409});
+ const receipt=await stored.json(),frozen=await(await env.ARTIFACTS.get(row.input_key)).json(),cost=textCost(receipt.payload.usage,frozen.prices);let plan=null,error=null;try{plan=parsePlan(receipt.payload,frozen);}catch(e){error=e.message;}
+ const resultKey='planner/'+requestId+'/result.json';await env.ARTIFACTS.put(resultKey,JSON.stringify({plan,validation_error:error,usage:receipt.payload.usage||null,cost_nanodollars:cost,request_id:receipt.requestId,review_required:true}));
+ // A refused/invalid plan can have known billing. Never invent zero cost or discard its receipt.
+ await env.DB.batch([env.DB.prepare("UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,receipt_key=?,error=? WHERE job_id=?").bind(cost,cost,'planner/'+requestId+'/receipt.json',error,requestId),env.DB.prepare('UPDATE planner_requests SET status=?,result_key=? WHERE id=?').bind(error?'invalid':'complete',resultKey,requestId)]);return {status:error?'invalid':'complete',resultKey};
+}

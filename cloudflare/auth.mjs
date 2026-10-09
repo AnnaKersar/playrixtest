@@ -29,7 +29,13 @@ export async function authenticate(request, env, fetcher = fetch) {
     if (claims.iss !== issuer || !Array.isArray(claims.aud) || !claims.aud.includes(audience) ||
       !Number.isFinite(claims.exp) || claims.exp <= now || !Number.isFinite(claims.iat) || claims.iat > now + 30 ||
       (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now + 30))) throw Error();
-    if (typeof claims.email !== 'string' || claims.email.toLowerCase() !== owner.toLowerCase()) return { status: 403, error: 'Owner access only.' };
-    return { email: claims.email };
+    if (typeof claims.email !== 'string') throw Error();
+    const email=claims.email.toLowerCase();
+    if(email===owner.toLowerCase())return {email,role:'owner',principalId:'owner'};
+    const list=name=>{const values=JSON.parse(env[name]||'[]');if(!Array.isArray(values)||values.some(v=>typeof v!=='string'))throw Error();return values.map(v=>v.toLowerCase());};
+    const role=list('GUEST_GENERATION_EMAILS').includes(email)?'generator':list('REVIEWER_EMAILS').includes(email)?'reviewer':null;
+    if(!role||typeof claims.sub!=='string'||!claims.sub)return {status:403,error:'Invited application role required.'};
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(issuer+'\n'+claims.sub));
+    return {email,role,principalId:'guest-'+Array.from(new Uint8Array(digest),x=>x.toString(16).padStart(2,'0')).join('')};
   } catch { return { status: 401, error: 'A valid Cloudflare Access owner token is required.' }; }
 }
