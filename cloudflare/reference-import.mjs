@@ -20,6 +20,28 @@ export async function referenceImport(req,env){try{
  if(req.method==='GET'&&op==='contract'){const available=[],hashes=[];for(const f of files){const h=await env.ARTIFACTS?.head(f.key),original=f.id?await libraryOriginal(env,f.id):null;if(h?.customMetadata?.sha256===f.sha256||original){hashes.push(f.sha256);if(f.id)available.push(f.id);}}return json({...contract,files,available_reference_ids:available,available_sha256:hashes});}
  if(req.method!=='POST'||req.headers.get('Origin')!==u.origin)return json({error:'Same-origin POST required'},403);
  if(!env.ARTIFACTS)return json({error:'Private R2 required'},503);
+ if(op==='seed'){
+ if(!env.ASSETS)return json({error:'Approved seed assets required'},503);
+ const body=JSON.parse(new TextDecoder().decode(await bounded(req,1000)));
+ if(Object.keys(body).some(k=>k!=='cursor')||!Number.isInteger(body.cursor)||body.cursor<0||body.cursor>=files.length)return json({error:'Invalid seed cursor'},400);
+ const batch=files.slice(body.cursor,body.cursor+5);let copied=0,skipped=0;
+ for(const f of batch){
+ const old=await env.ARTIFACTS.get(f.key);
+ if(old&&await sha(new Uint8Array(await old.arrayBuffer()))===f.sha256){skipped++;continue;}
+ const original=f.id?await libraryOriginal(env,f.id):null;
+ let bytes=original?new Uint8Array(await original.arrayBuffer()):null;
+ if(!bytes||await sha(bytes)!==f.sha256){
+ const path=f.id?'/reference-seed/original160-v1/'+f.id+'.png':'/studio/reference-seed/'+f.filename;
+ const response=await env.ASSETS.fetch(new Request('https://seed.invalid'+path));
+ if(!response.ok)throw Error('Approved reference seed missing');
+ bytes=new Uint8Array(await response.arrayBuffer());
+ }
+ if(bytes.length>20000000||(f.bytes&&bytes.length!==f.bytes)||await sha(bytes)!==f.sha256)throw Error('Reference seed SHA-256 mismatch');
+ if(f.filename){const p=await decodePNG(bytes);if(p.width!==896||p.height!==1040)throw Error('Reference sheet dimensions');}
+ await env.ARTIFACTS.put(f.key,bytes,{customMetadata:{sha256:f.sha256},httpMetadata:{contentType:'image/png'}});copied++;
+ }
+ return json({next:body.cursor+batch.length,total:files.length,copied,skipped});
+ }
  if(op==='file'){
  const f=files.find(f=>f.sha256===u.searchParams.get('sha256'));if(!f)return json({error:'File not allowed'},403);
  const bytes=await bounded(req,f.bytes||20000000);if(f.bytes&&bytes.length!==f.bytes||await sha(bytes)!==f.sha256)throw Error('Reference SHA-256 mismatch');
