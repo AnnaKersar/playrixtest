@@ -1,7 +1,15 @@
 let refs=[];
 let selectedCategory = '';
 const $ = id => document.getElementById(id);
-const categories = ['C1', 'C2', 'C3', 'C4', 'C5', 'unknown'];
+const categories = ['C1', 'C2', 'C3', 'C4', 'C5'];
+const descriptions = {
+  '': 'Все референсы, сгруппированные по типу композиции. Выберите категорию, чтобы увидеть её описание и карточки.',
+  C1: 'C1 — изолированный предмет: главный объект на декоративном фоне, без окружения.',
+  C2: 'C2 — предмет на простой плоскости: под объектом есть несложная поверхность на всю ширину карточки.',
+  C3: 'C3 — предмет с проработанной поверхностью: объект и значимая опора или участок окружения образуют единую композицию.',
+  C4: 'C4 — цельная сцена: предметы показаны вместе с окружением, пространством и деталями обстановки.',
+  C5: 'C5 — сюжет с персонажами: люди или животные участвуют в действии и становятся центром композиции.'
+};
 const categoryOf = ref => categories.includes(ref.category) ? ref.category : 'unknown';
 const categoryLabel = category => category === 'unknown' ? 'Не определена' : category;
 function renderButtons() {
@@ -51,6 +59,7 @@ function card(ref) {
   return figure;
 }
 function render() {
+  $('category-description').textContent = descriptions[selectedCategory];
   const query = $('search').value.trim().toLocaleLowerCase('ru');
   const rows = refs.filter(ref =>
     (!selectedCategory || categoryOf(ref) === selectedCategory) &&
