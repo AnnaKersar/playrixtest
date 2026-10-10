@@ -20,7 +20,7 @@ export function validateCategoryInventory(objects){
  if(counts.size<min||[...counts.values()].some(n=>n>max))throw Error('Категория однообразна: нужны разные типы предметов, не только разные модели одного типа. Генерация не отправлена.');
 }
 const palettes=['gold','purple','cyan','pink','green'];
-const patterns=['concentric-rings','horizontal-bands','vertical-bands','diagonal-bands','dots','diamonds','squares','hexagons','triangles','chevrons','waves','arches','scallops','crosses','stars','grid','herringbone','rounded-tiles','lozenges','plain-gradient'];
+const patterns=['concentric-rings','stripes','polka-dots','checkerboard','honeycomb','triangles','chevrons','waves','scallops','crosses','stars','grid','herringbone','spirals','plain-gradient'];
 function randomFor(seed){let n=2166136261;for(const c of seed)n=Math.imul(n^c.charCodeAt(0),16777619)>>>0;return()=>{n=(Math.imul(n,1664525)+1013904223)>>>0;return n/4294967296;};}
 function shuffled(a,random){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function categoryVisualSchedule(count,seed){
