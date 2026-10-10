@@ -4,3 +4,18 @@
 nav{flex-wrap:wrap}.archive-step>div,.notes>div{min-width:0}main{overflow-wrap:anywhere}
 
 .latest-test{padding:24px;margin-bottom:24px}
+
+/* The document scrolls; only the garden stays fixed. */
+html{overflow-y:auto;height:auto}body{height:auto;min-height:100vh;overflow:visible;background-attachment:fixed}
+.archive-step{display:block;padding:0;margin:16px 0;background:#fffef7f5;border:3px solid #fff;border-radius:22px;box-shadow:0 5px 0 #71b1d057;overflow:hidden}
+.archive-step>summary{display:flex;align-items:center;gap:20px;padding:22px 24px;list-style:none;font-size:inherit;background:linear-gradient(#eefaff,#d7f0ff)}
+.archive-step>summary::-webkit-details-marker{display:none}
+.archive-step>summary:after{content:'＋';margin-left:auto;font-size:28px;color:#2775bc;flex:none}
+.archive-step[open]>summary:after{content:'−'}
+.archive-heading{display:flex;flex-direction:column;gap:6px;min-width:0}
+.archive-title{font-size:23px;color:#326aa1;line-height:1.25}
+.archive-body{padding:24px;min-width:0}.archive-section{padding:20px;margin:18px 0;box-shadow:none;border:1px solid #d1e4ed;border-radius:16px;background:#fff}
+.archive-section h3{margin:0 0 14px;font-size:20px}.archive-section p{white-space:pre-wrap}
+.archive-section h4{margin:0 0 12px}.archive-data pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 monospace}
+#generated-attempts{padding:24px}#introduction{padding:24px;margin:24px 0}#chapter-notes:not(:empty){padding:24px}
+@media(max-width:600px){.archive-step>summary{padding:18px 14px;gap:12px}.archive-title{font-size:19px}.archive-body{padding:14px}.archive-section{padding:14px}#generated-attempts{padding:14px}}
