@@ -1,3 +1,4 @@
+import {gameStats} from './mini-game-stats.mjs';
 import {miniGame} from './mini-game.mjs';
 import {isReferenceSeedPath,copyReferenceSeed} from './reference-seed.mjs';
 import {ownerNavigationRedirect} from './owner-navigation.mjs';
@@ -46,6 +47,7 @@ export function createPublicGuestWorker(backend){return {
    if(['GET','HEAD'].includes(request.method)&&publicPaths.has(url.pathname)){
     if(!env.PUBLIC_ASSETS)return json({error:'Public-safe editor not configured'},503);const r=await env.PUBLIC_ASSETS.fetch(request),headers=new Headers(r.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"frame-src 'self'; default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(request.method==='HEAD'?null:r.body,{status:r.status,headers});
    }
+   if(['/api/game/stats','/api/game/start','/api/game/answer'].includes(url.pathname))return gameStats(request,env);
    if(url.pathname==='/api/game'||url.pathname==='/api/game/image')return miniGame(request,env);
    if(url.pathname==='/api/generation-status'&&request.method==='GET'){
  if(!env.DB||!env.ARTIFACTS)return json({error:'Диагностика временно недоступна'},503);
