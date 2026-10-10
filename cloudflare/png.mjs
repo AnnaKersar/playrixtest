@@ -1,3 +1,4 @@
+import {Inflate} from './vendor/pako-inflate.mjs';
 // Bounded PNG RGB/RGBA8 codec. Reject unsupported formats rather than silently changing alpha.
 const sig = new Uint8Array([137,80,78,71,13,10,26,10]);
 const table = Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
@@ -24,13 +25,30 @@ export async function decodePNG(bytes) {
     p+=n+12;
   }
   if(!ended||!parts.length)throw Error('Incomplete PNG');
-  // Bound decompression before collecting: a malicious compressed stream must not exhaust the isolate.
-  const expected=height*(width*channels+1),reader=new Blob([concat(parts)]).stream().pipeThrough(new DecompressionStream('deflate')).getReader(),segments=[];let count=0;
-  while(true){const {value,done}=await reader.read();if(done)break;count+=value.length;if(count>expected){await reader.cancel();throw Error('PNG inflated size');}segments.push(value);}
-  if(count!==expected)throw Error('PNG scanline size');const scan=concat(segments),stride=width*channels,raw=new Uint8Array(height*stride);
-  const paeth=(a,b,c)=>{const x=a+b-c,pa=Math.abs(x-a),pb=Math.abs(x-b),pc=Math.abs(x-c);return pa<=pb&&pa<=pc?a:pb<=pc?b:c;};
-  for(let y=0;y<height;y++){const f=scan[y*(stride+1)];if(f>4)throw Error('PNG filter');for(let x=0;x<stride;x++){const i=y*stride+x,a=x>=channels?raw[i-channels]:0,b=y?raw[i-stride]:0,c=y&&x>=channels?raw[i-stride-channels]:0;const predictor=f===0?0:f===1?a:f===2?b:f===3?(a+b)>>1:paeth(a,b,c);raw[i]=(scan[y*(stride+1)+1+x]+predictor)&255;}}
-  const rgba=new Uint8Array(width*height*4);for(let i=0;i<width*height;i++){const s=i*channels,d=i*4;rgba[d]=raw[s];rgba[d+1]=raw[s+1];rgba[d+2]=raw[s+2];rgba[d+3]=channels===4?raw[s+3]:255;}return {width,height,rgba,channels};
+
+  // Fixed-size destination and bounded output chunks: no stream wait or growing segment list.
+  const expected=height*(width*channels+1),scan=new Uint8Array(expected);
+  const compressed=parts.length===1?parts[0]:concat(parts);
+  if(compressed.length<6||(compressed[0]&15)!==8||((compressed[0]<<8)+compressed[1])%31||compressed[1]&32)throw Error('PNG zlib header');
+  const inflater=new Inflate({chunkSize:65536,windowBits:15});let count=0;
+  inflater.onData=value=>{if(value.length>expected-count)throw Error('PNG inflated size');scan.set(value,count);count+=value.length;};
+  if(!inflater.push(compressed,true)||inflater.err||!inflater.ended)throw Error('PNG deflate: '+(inflater.msg||'incomplete'));
+  if(count!==expected)throw Error('PNG scanline size');
+  const stride=width*channels,raw=new Uint8Array(height*stride);
+  for(let y=0;y<height;y++){
+   const base=y*stride,source=y*(stride+1)+1,f=scan[source-1];
+   if(f===0){raw.set(scan.subarray(source,source+stride),base);continue;}
+   if(f>4)throw Error('PNG filter');
+   if(f===1){for(let x=0;x<channels;x++)raw[base+x]=scan[source+x];for(let x=channels;x<stride;x++)raw[base+x]=(scan[source+x]+raw[base+x-channels])&255;}
+   else if(f===2){if(!y)raw.set(scan.subarray(source,source+stride),base);else for(let x=0;x<stride;x++)raw[base+x]=(scan[source+x]+raw[base-stride+x])&255;}
+   else if(f===3){for(let x=0;x<stride;x++){const a=x>=channels?raw[base+x-channels]:0,b=y?raw[base-stride+x]:0;raw[base+x]=(scan[source+x]+((a+b)>>1))&255;}}
+   else {for(let x=0;x<stride;x++){const a=x>=channels?raw[base+x-channels]:0,b=y?raw[base-stride+x]:0,c=y&&x>=channels?raw[base-stride+x-channels]:0,p=a+b-c,pa=Math.abs(p-a),pb=Math.abs(p-b),pc=Math.abs(p-c);raw[base+x]=(scan[source+x]+(pa<=pb&&pa<=pc?a:pb<=pc?b:c))&255;}}
+  }
+  // RGBA rows already are the final pixel buffer; preserve alpha without copying again.
+  if(channels===4)return {width,height,rgba:raw,channels};
+  const rgba=new Uint8Array(width*height*4);
+  for(let s=0,d=0;s<raw.length;s+=3,d+=4){rgba[d]=raw[s];rgba[d+1]=raw[s+1];rgba[d+2]=raw[s+2];rgba[d+3]=255;}
+  return {width,height,rgba,channels};
 }
 export async function mockPNG(width=860,height=960) {
   const rgba=new Uint8Array(width*height*4);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const dx=(x-width/2)/(width*.32),dy=(y-height*.49)/(height*.33),hole=(x-width*.58)**2+(y-height*.43)**2<(width*.07)**2;if(dx*dx+dy*dy<1&&!hole){const i=(y*width+x)*4;rgba.set([70,175,204,255],i);}}return encodePNG(width,height,rgba);
