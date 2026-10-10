@@ -11,14 +11,14 @@ export function cardTypeMix(count){
 }
 export function collectionSettings(advanced={}){
  const count=advanced.category_count===''||advanced.category_count==null?1:Number(advanced.category_count);
- if(!Number.isInteger(count)||count<1||count>20)throw Error('Количество категорий: от 1 до 20.');
+ if(!Number.isInteger(count)||count<1||count>30)throw Error('Количество категорий: от 1 до 30.');
  const categories=Array.from({length:count},(_,i)=>{
   const row=advanced.categories?.[i]||{},cards=row.card_count===''||row.card_count==null?10:Number(row.card_count);
   if(!Number.isInteger(cards)||cards<1||cards>15)throw Error('Карточек в категории '+(i+1)+': от 1 до 15 (лимит повторения пяти цветов).');
   return {name:String(row.name||'').trim(),theme:String(row.theme||'').trim(),card_count:cards,production_type_mix:cardTypeMix(cards)};
  });
  const total=categories.reduce((n,c)=>n+c.card_count,0);
- if(total>20)throw Error('За один запуск доступно до 20 карточек. Уменьшите число категорий или карточек в них.');
+ if(total>30)throw Error('За один запуск доступно до 30 карточек. Уменьшите число категорий или карточек в них.');
  return {category_count:count,category_theme:String(advanced.category_theme||'').trim(),categories,total};
 }
 export function collectionBrief(name,wishes,advanced={}){

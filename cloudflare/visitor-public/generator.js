@@ -14,7 +14,7 @@ function advancedChanged(){persist();updateAdvancedTotal();}
 function updateAdvancedTotal(){try{const s=collectionSettings(saved.advanced);text('advanced-total',s.category_count+' категорий · '+s.total+' карточек · цельная генерация');}catch(e){text('advanced-total',e.message);}}
 function renderCategorySettings(){
  const count=Number(saved.advanced.category_count)||1;
- $('category-settings').replaceChildren(...Array.from({length:Math.min(20,Math.max(1,count))},(_,i)=>{
+ $('category-settings').replaceChildren(...Array.from({length:Math.min(30,Math.max(1,count))},(_,i)=>{
   const box=node('section');box.className='category-row';box.append(node('h3','Категория '+(i+1)));
   const row=saved.advanced.categories[i]||={name:'',theme:'',card_count:''};
   for(const [key,label,placeholder,type]of [['name','Название категории','Система придумает','text'],['theme','Тема этой категории','По общей теме категорий','text'],['card_count','Карточек в категории','10','number']]){
@@ -26,7 +26,7 @@ function renderCategorySettings(){
 }
 $('category-count').oninput=()=>{saved.advanced.category_count=$('category-count').value;renderCategorySettings();advancedChanged();};
 $('category-theme').oninput=()=>{saved.advanced.category_theme=$('category-theme').value;advancedChanged();};
-$('add-category').onclick=()=>{saved.advanced.category_count=Math.min(20,(Number(saved.advanced.category_count)||1)+1);$('category-count').value=saved.advanced.category_count;renderCategorySettings();advancedChanged();};
+$('add-category').onclick=()=>{saved.advanced.category_count=Math.min(30,(Number(saved.advanced.category_count)||1)+1);$('category-count').value=saved.advanced.category_count;renderCategorySettings();advancedChanged();};
 renderCategorySettings();persist();
 
 for(const id of ['collection-name','producer-wishes'])$(id).oninput=()=>{saved.name=$('collection-name').value;saved.wishes=$('producer-wishes').value;persist();};

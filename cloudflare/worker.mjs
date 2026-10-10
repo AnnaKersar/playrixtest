@@ -57,7 +57,7 @@ async function dispatch(env){const rows=await all(env,"SELECT job_id FROM outbox
 async function createRun(env,body,auth){
   generationRole(auth);
   const mode=body.mode||'mock';if(!['mock','live'].includes(mode))fail(400,'Invalid mode');const objects=body.objects;
-  if(!Array.isArray(objects)||!objects.length||objects.length>20||new Set(objects.map(o=>o.object_id)).size!==objects.length||objects.some(o=>!safeId(o.object_id)||o.object_id.length>60||typeof o.brief!=='string'||!o.brief.trim()||o.brief.length>12000))fail(400,'Provide 1-20 distinct IDs and briefs');
+  if(!Array.isArray(objects)||!objects.length||objects.length>30||new Set(objects.map(o=>o.object_id)).size!==objects.length||objects.some(o=>!safeId(o.object_id)||o.object_id.length>60||typeof o.brief!=='string'||!o.brief.trim()||o.brief.length>12000))fail(400,'Provide 1-30 distinct IDs and briefs');
   let manifest=null;if(mode==='live'){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)fail(403,'Live generation disabled');
     if(objects.some(o=>!['C1','C2','C3','C4'].includes(o.category)||o.generation_mode!=='whole_card'))fail(409,'Эта коллекция должна генерироваться целиком. Обновите страницу перед новым запуском; модульная генерация отключена.');
@@ -66,7 +66,7 @@ async function createRun(env,body,auth){
   }
   if(body.planner_request_id!==undefined){if(!safeId(body.planner_request_id))fail(400,'Invalid planner request');const origin=await one(env,'SELECT principal_id FROM planner_requests WHERE id=?',body.planner_request_id);if(!origin||origin.principal_id!==auth.principalId)fail(403,'Planner origin access denied');}
   if(body.requestId!==undefined&&!safeId(body.requestId))fail(400,'Invalid stable request ID');
-  if(body.category_names!==undefined&&(!Array.isArray(body.category_names)||body.category_names.length>20||body.category_names.some(n=>typeof n!=='string'||n.length>300)))fail(400,'Invalid thematic category names');
+  if(body.category_names!==undefined&&(!Array.isArray(body.category_names)||body.category_names.length>30||body.category_names.some(n=>typeof n!=='string'||n.length>300)))fail(400,'Invalid thematic category names');
   const context=experimentContext(body);const runId=body.requestId?'run_'+(await sha(auth.principalId+'|'+body.requestId)).slice(0,48):crypto.randomUUID();const groups=new Map();for(const o of objects){const key=o.thematic_category||'default';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(o);}
   const variation=new Map();if(mode==='live')for(const [name,items] of groups){validateCategoryInventory(items);categoryVisualSchedule(items.length,runId+'|'+name).forEach((v,i)=>variation.set(items[i].object_id,v));}
   const contractFor=o=>({...generationContract(o.category,o.generation_mode,runId+'|'+o.object_id),...(variation.has(o.object_id)?{variation:variation.get(o.object_id)}:{})});
