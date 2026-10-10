@@ -6,10 +6,10 @@ export async function budgetState(env) {
  return {unit:'nanodollars',...b,ceiling:Math.min(b?.ceiling||0,PROJECT_CAP),committed:a?.committed||0,unresolved_attempts:a?.unresolved||0,remaining:b?Math.max(0,Math.min(b.ceiling,PROJECT_CAP)-b.historical_known-b.historical_unknown-(a?.committed||0)):0,guest_scope:'all-non-owner-lifetime',guest_ceiling:GUEST_CAP,guest_committed:a?.guests||0,guest_remaining:Math.max(0,GUEST_CAP-(a?.guests||0)),live_blockers:reasons};
 }
 export function reservationFor(env,kind,principalId){
+ if(kind==='image'&&principalId==='owner')return 10000000000;
  const value=Number(env[kind==='image'?'IMAGE_MAX_COST_NANODOLLARS':'TEXT_RESERVATION_NANODOLLARS']);
  if(principalId!=='owner'&&(!env[kind==='image'?'IMAGE_COST_BOUND_EVIDENCE':'TEXT_COST_BOUND_EVIDENCE']||!Number.isSafeInteger(value)||value<=0))throw Object.assign(Error('Verified request cost upper bound required for guest generation'),{status:409});
  if(Number.isSafeInteger(value)&&value>0)return value;
- if(kind==='image'&&principalId==='owner')return 1000000000;
  throw Object.assign(Error('Explicit positive reservation required'),{status:409});
 }
 export async function claimPaid(env,jobId,reservation,principalId='owner'){
