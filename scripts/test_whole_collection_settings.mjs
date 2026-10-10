@@ -15,7 +15,9 @@ assert.equal(imagePayload(plannedCollection(custom,{collections:[group('Comedy',
 assert.equal(collectionBrief('Films','',{category_count:2}).card_count,20);
 assert.throws(()=>plannedCollection(custom,{collections:[group('Comedy',4),group('Adventure',6,4)]}));
 assert.throws(()=>plannedCollection(custom,{collections:[group('Wrong name',3),group('Adventure',7,3)]}));
-assert.throws(()=>collectionSettings({category_count:3}));
+assert.equal(collectionBrief('Films','',{category_count:3}).card_count,30);
+assert.equal(imagePayload(plannedCollection(collectionBrief('Films','',{category_count:3}),{collections:[group('Comedy',10),group('Adventure',10,10),group('Premiere',10,20)]})).objects.length,30);
+assert.throws(()=>collectionSettings({category_count:4}),/30/);
 assert.throws(()=>collectionSettings({categories:[{card_count:0}]}));
 for(const category of ['C1','C2','C3','C4']){
  const contract=generationContract(category,'whole_card','test|'+category),prompt=generationInstructions(contract);
