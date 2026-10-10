@@ -6,10 +6,11 @@ export function usageCost(usage) {
   if (![text,image,output,usage?.input_tokens,usage?.total_tokens].every(n=>Number.isSafeInteger(n)&&n>=0)||text+image!==usage.input_tokens||usage.input_tokens+output!==usage.total_tokens)return null;
   const value=text*5000+image*8000+output*30000;return Number.isSafeInteger(value)?value:null;
 }
-export async function imageRequest(env,prompt,sheets,fetcher=fetch) {
+export async function imageRequest(env,prompt,sheets,fetcher=fetch,options={}) {
   if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live provider disabled');
   if(sheets.length!==13)throw Error('Exactly 13 sheets required');
-  const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size:'1376x1536',quality:'medium',background:'transparent',output_format:'png',prompt}))body.append(k,v);
+  const background=options.background||'transparent';if(!['transparent','opaque'].includes(background))throw Error('Invalid background mode');
+  const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size:'1376x1536',quality:'medium',background,output_format:'png',prompt}))body.append(k,v);
   sheets.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/png'}),`sheet-${i+1}.png`));
   // Exactly one send. No SDK retries, redirects, alternative models or replay after timeout.
   const response=await fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`},body,redirect:'manual',signal:AbortSignal.timeout(240000)});
@@ -20,3 +21,4 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch) {
   if(typeof base64!=='string'||base64.length>34*1024*1024||payload.data.length!==1)throw Error('Invalid image response');
   return {png:Uint8Array.from(atob(base64),c=>c.charCodeAt(0)),usage:payload.usage||null,model:payload.model||null,requestId};
 }
+

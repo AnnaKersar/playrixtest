@@ -33,8 +33,8 @@ export async function mockPNG(width=860,height=960) {
   const rgba=new Uint8Array(width*height*4);for(let y=0;y<height;y++)for(let x=0;x<width;x++){const dx=(x-width/2)/(width*.32),dy=(y-height*.49)/(height*.33),hole=(x-width*.58)**2+(y-height*.43)**2<(width*.07)**2;if(dx*dx+dy*dy<1&&!hole){const i=(y*width+x)*4;rgba.set([70,175,204,255],i);}}return encodePNG(width,height,rgba);
 }
 // Separable Lanczos-3 with premultiplied alpha; PNG output keeps transparent holes.
-export async function finalPNG(bytes,onPhase=async()=>{}) {
-  await onPhase('decoding_png');const src=await decodePNG(bytes);await onPhase('resizing_png');if(src.width!==1376||src.height!==1536||src.channels!==4)throw Error('Expected native 1376x1536 RGBA8');
+export async function finalPNG(bytes,onPhase=async()=>{},options={}) {
+  await onPhase('decoding_png');const src=await decodePNG(bytes);await onPhase('resizing_png');if(src.width!==1376||src.height!==1536||(src.channels!==4&&!(options.allowRGB&&src.channels===3)))throw Error('Expected native 1376x1536 RGBA8');
   const w=860,h=960,scale=src.width/w,sinc=x=>x===0?1:Math.sin(Math.PI*x)/(Math.PI*x),kernel=x=>Math.abs(x)<3?sinc(x)*sinc(x/3):0;
   const weights=(out,size)=>Array.from({length:out},(_,i)=>{const center=(i+.5)*scale-.5,items=[];let total=0;for(let j=Math.ceil(center-3*scale);j<=Math.floor(center+3*scale);j++){const k=kernel((j-center)/scale);items.push([Math.max(0,Math.min(size-1,j)),k]);total+=k;}return items.map(([j,k])=>[j,k/total]);});
   const wx=weights(w,src.width),wy=weights(h,src.height),out=new Uint8Array(w*h*4),rows=new Map();
@@ -52,3 +52,4 @@ export function pinnedReferencePNG(bytes){
  let p=33,idat=false,ended=false;while(p+12<=bytes.length){const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated reference PNG');const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(type==='IHDR'||type==='tRNS')throw Error('Unsupported reference PNG chunk');if(type==='IDAT'){if(n)idat=true;}if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('Invalid reference PNG end');ended=true;break;}p+=n+12;}
  if(!idat||!ended)throw Error('Incomplete reference PNG');return {width,height,channels};
 }
+
