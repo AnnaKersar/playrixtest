@@ -1,4 +1,4 @@
-import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs';
+import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=poll-v2-20261010';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs';

@@ -55,7 +55,6 @@ async function step(){
     if(!p.expectedPlanId||!p.expectedRunId){const identity=await api('/api/preflight');p.expectedPlanId=await stableId('planner_',identity.principalId,p.plannerKey);p.expectedRunId=await stableId('run_',identity.principalId,p.runKey);commitPending({expectedPlanId:p.expectedPlanId,expectedRunId:p.expectedRunId},p.plannerKey);}
     if(!p.planId){
       publish({phase:'running',message:plannerProgress({stage:'queued'},Date.now()-p.startedAt)});
-      if(await existing('/api/planner?id='+encodeURIComponent(p.expectedPlanId))){commitPending({planId:p.expectedPlanId},p.plannerKey);return;}
       const response=await api('/api/plan-live',{...plannerPayload(draft),requestId:p.plannerKey,approval:'I approve one paid planner attempt'});
       commitPending({planId:response.requestId},p.plannerKey);return;
     }
@@ -65,8 +64,8 @@ async function step(){
       if(plan.result?.validation_error)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
         if(!p.planResult)commitPending({planResult:plan.result.plan},p.plannerKey);
-        if(await existing('/api/run?run='+encodeURIComponent(p.expectedRunId))){const fresh=commitPending({runId:p.expectedRunId},p.plannerKey);if(fresh){fresh.runId=p.expectedRunId;save(fresh);}return;}
         let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
+        publish({phase:'running',message:'План готов · '+plan.result.plan.collections.map(c=>c.name).join(' / ')+' · передаём карточки в очередь'});
         const response=await api('/api/runs',{...imagePayload(approved),requestId:p.runKey,planner_request_id:p.planId,mode:'live',approval:'I approve one paid attempt per object'});
         const fresh=commitPending({runId:response.runId},p.plannerKey);
         if(fresh){fresh.runId=response.runId;save(fresh);}return;

@@ -12,4 +12,16 @@ now+=10000;await vm.runInContext('tick()',b.context);assert.equal(requests,2);as
 now+=10000;a.events.storage({key:'card-studio-generation-progress/v1'});await Promise.resolve();assert.equal(requests,2);
 assert.equal(writes.get(key)||0,0);
 console.log('PASS shared 10-second gate across tabs, no progress-triggered polling, unchanged progress/state not saved repeatedly, GET only; paid sends 0');
+store.set(key,JSON.stringify({pending:{plannerKey:'q',runKey:'rq',planId:'planner_q',expectedPlanId:'planner_q',expectedRunId:'run_q',name:'Music',wishes:'',startedAt:0,paused:true}}));
+const c=tab();await Promise.resolve();await Promise.resolve();let planGets=0,runPosts=0;
+c.context.plannedCollection=()=>({approved:true});c.context.imagePayload=()=>({objects:[]});c.context.imageProgress=()=> 'Images queued';
+c.context.fetch=async(url,options)=>{
+ if(url.startsWith('/api/planner?')){planGets++;return new Response(JSON.stringify({status:'complete',result:{plan:{collections:[{name:'Jazz',objects:[]}]}}}));}
+ if(url==='/api/runs'){runPosts++;const payload=JSON.parse(options.body);assert.equal(payload.requestId,'rq');return new Response(JSON.stringify({runId:'run_q'}));}
+ assert.equal(runPosts,1,'No missing-run lookup before creating the run');return new Response(JSON.stringify({jobs:[]}));
+};
+const ready=JSON.parse(store.get(key));ready.pending.paused=false;store.set(key,JSON.stringify(ready));now+=20000;
+await vm.runInContext('tick()',c.context);assert.equal(runPosts,1);assert.equal(planGets,1);assert.equal(JSON.parse(store.get(key)).pending.runId,'run_q');
+now+=20000;await vm.runInContext('tick()',c.context);assert.equal(runPosts,1);assert.equal(planGets,1);
+console.log('PASS completed plan proceeds to one stable-id run submission, no missing-resource probe or repeated planner send; simulated network only');
 
