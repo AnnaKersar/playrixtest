@@ -22,6 +22,6 @@ for(const category of ['C1','C2','C3','C4']){
  assert.match(prompt,/No living creatures/);assert.match(prompt,/rear batter-head side/);
  assert.match(prompt,/78% canvas width and 76% height/);assert.match(prompt,/FROZEN CATEGORY VARIATION/);
  if(category==='C3')assert.match(prompt,/against a BASIC designed background/);
- if(category==='C4')assert.match(prompt,/INTEGRATED INTO A DETAILED ENVIRONMENT/);
+ if(category==='C4'){assert.match(prompt,/INTEGRATED INTO A DETAILED ENVIRONMENT OR A DETAILED SCENE-FILLING SURFACE/);assert.match(prompt,/NO STANDARD BACKGROUND/);assert.match(prompt,/football pitch/);assert(!prompt.includes('Background gradient targets'));}
 }
 console.log('PASS living-creature ban, semantic diversity, 800 seeded category decks, palette caps, unique patterns, size/perspective/construction rules in every C1-C4 prompt; paid calls 0');
