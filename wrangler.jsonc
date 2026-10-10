@@ -43,8 +43,5 @@
   "vars": {
     "LIVE_GENERATION_ENABLED": "true",
     "LIVE_PLANNER_ENABLED": "true"
-  },
-  "limits": {
-    "cpu_ms": 300000
   }
 }
