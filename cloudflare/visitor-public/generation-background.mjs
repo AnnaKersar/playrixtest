@@ -4,11 +4,13 @@ export const generationKey='card-studio-generator/v2';
 const progressKey='card-studio-generation-progress/v1';
 export const readGeneration=()=>{try{return JSON.parse(localStorage.getItem(generationKey)||'{}');}catch{return {};}};
 const readProgress=()=>{try{return JSON.parse(localStorage.getItem(progressKey)||'{}');}catch{return {};}};
-function save(state){localStorage.setItem(generationKey,JSON.stringify(state));}
-function publish(progress){localStorage.setItem(progressKey,JSON.stringify({...progress,at:Date.now()}));window.dispatchEvent(new Event('generation-progress'));}
+function save(state){const value=JSON.stringify(state);if(localStorage.getItem(generationKey)!==value)localStorage.setItem(generationKey,value);}
+function progressIdentity(progress){const {at,...rest}=progress;return JSON.stringify({...rest,message:(rest.message||'').replace(/ · \d+:\d+/g,'')});}
+function publish(progress){if(progressIdentity(readProgress())===progressIdentity(progress))return;localStorage.setItem(progressKey,JSON.stringify({...progress,at:Date.now()}));window.dispatchEvent(new Event('generation-progress'));}
+const pollGateKey='card-studio-generation-poll/v1',POLL_MS=10000;
 async function api(path,body){
   const response=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
-  const data=await response.json();
+  const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{throw Object.assign(Error('Сайт вернул не JSON · HTTP '+response.status),{status:response.status||503});}
   if(!response.ok)throw Object.assign(Error(data.error||'HTTP '+response.status),{status:response.status});
   return data;
 }
@@ -58,10 +60,11 @@ async function step(){
       commitPending({planId:response.requestId},p.plannerKey);return;
     }
     if(!p.runId){
-      const plan=await api('/api/planner?id='+encodeURIComponent(p.planId));
+      const plan=p.planResult?{status:'complete',stage:'complete',result:{plan:p.planResult}}:await api('/api/planner?id='+encodeURIComponent(p.planId));
       publish({phase:'running',message:plannerProgress(plan,Date.now()-p.startedAt)});
       if(plan.result?.validation_error)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
+        if(!p.planResult)commitPending({planResult:plan.result.plan},p.plannerKey);
         if(await existing('/api/run?run='+encodeURIComponent(p.expectedRunId))){const fresh=commitPending({runId:p.expectedRunId},p.plannerKey);if(fresh){fresh.runId=p.expectedRunId;save(fresh);}return;}
         let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
         const response=await api('/api/runs',{...imagePayload(approved),requestId:p.runKey,planner_request_id:p.planId,mode:'live',approval:'I approve one paid attempt per object'});
@@ -87,14 +90,24 @@ async function step(){
     if(jobs.length&&jobs.every(job=>job.status==='complete'||plannerStopped.has(job.status)))throw Object.assign(Error('Часть карточек требует проверки. Откройте «Тест».'),{terminal:true});
   }catch(error){
     if(readGeneration().pending?.plannerKey!==p.plannerKey)return;
+    if(error.status>=400&&error.status<500&&![408,429].includes(error.status))error.terminal=true;
     if(error.terminal)commitPending({paused:true},p.plannerKey);
-    publish({phase:error.terminal?'paused':'running',runId:p.runId||null,message:error.terminal?error.message:'Попытка сохранена. Продолжаем проверять ответ сайта…'});
+    publish({phase:error.terminal?'paused':'running',runId:p.runId||null,message:error.terminal?error.message:'Проверка временно недоступна: '+error.message+'. Сохранённая попытка не отправляется повторно.'});
   }
 }
 let ticking=false;
 async function tick(){
   if(ticking)return;ticking=true;
-  try{if(navigator.locks)await navigator.locks.request('playrix-generation-step',{ifAvailable:true},lock=>lock?step():undefined);else await step();}
+  try{
+    const check=async()=>{
+      const state=readGeneration();if(!state.pending||state.pending.paused)return;
+      let gate={};try{gate=JSON.parse(localStorage.getItem(pollGateKey)||'{}');}catch{}
+      const now=Date.now();if(gate.key===state.pending.plannerKey&&now-gate.at<POLL_MS)return;
+      localStorage.setItem(pollGateKey,JSON.stringify({key:state.pending.plannerKey,at:now}));
+      await step();
+    };
+    if(navigator.locks)await navigator.locks.request('playrix-generation-step',{ifAvailable:true},lock=>lock?check():undefined);else await check();
+  }
   finally{ticking=false;}
 }
 function onGenerator(){return !!document.getElementById('launch-form')&&!document.hidden;}
@@ -113,7 +126,7 @@ function showNotification(){
   link.onclick=()=>localStorage.setItem('playrix-notification-dismissed',completed.runId);
   toast.append(title,message,link,close);document.body.append(toast);
 }
-window.addEventListener('storage',event=>{if([generationKey,progressKey].includes(event.key)){window.dispatchEvent(new Event('generation-progress'));showNotification();tick();}});
+window.addEventListener('storage',event=>{if([generationKey,progressKey].includes(event.key)){window.dispatchEvent(new Event('generation-progress'));showNotification();}});
 document.addEventListener('visibilitychange',()=>{showNotification();tick();});
 window.addEventListener('pageshow',()=>{showNotification();tick();});
-showNotification();tick();setInterval(tick,5000);
+showNotification();tick();setInterval(tick,POLL_MS);
