@@ -1,4 +1,4 @@
-import {startGeneration,readGeneration,generationProgress} from './generation-background.mjs';
+import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs';
@@ -44,11 +44,15 @@ const wait=()=>new Promise(resolve=>setTimeout(resolve,5000));
 function updateGenerationUI(){
   saved=readGeneration();const progress=generationProgress();
   busy=!!saved.pending&&!saved.pending.paused;
+  clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
   $('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
   if(progress.message)text('launch-status',progress.message);
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
 }
+const clearWaiting=node('button','Снять зависшее ожидание');clearWaiting.type='button';clearWaiting.id='clear-generation-waiting';
+$('launch-form').insertBefore(clearWaiting,$('launch'));
+clearWaiting.onclick=async()=>{clearWaiting.disabled=true;try{await clearGenerationWaiting();updateGenerationUI();}catch(e){text('launch-status',e.message);}finally{clearWaiting.disabled=false;}};
 let refreshingRun=false;
 window.addEventListener('generation-progress',updateGenerationUI);
 async function launch(){

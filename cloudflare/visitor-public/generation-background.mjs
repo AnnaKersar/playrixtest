@@ -13,6 +13,17 @@ async function api(path,body){
   return data;
 }
 export function generationProgress(){return readProgress();}
+export async function clearGenerationWaiting(){
+ const clear=()=>{
+  const state=readGeneration(),pending=state.pending;
+  if(!pending)return;
+  state.detached_attempts=[...(state.detached_attempts||[]),{...pending,detachedAt:Date.now()}];
+  if(pending.runId)state.runId=pending.runId;
+  state.pending=null;save(state);
+  publish({phase:'idle',runId:state.runId||null,message:'Ожидание снято. Карточки и история сохранены. Можно настроить новую коллекцию.'});
+ };
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',clear);else clear();
+}
 function commitPending(patch,plannerKey){
   const state=readGeneration();
   if(state.pending?.plannerKey!==plannerKey)return null;
@@ -75,6 +86,7 @@ async function step(){
     publish({phase:'running',runId:p.runId,message:imageProgress(jobs,draft.card_count)});
     if(jobs.length&&jobs.every(job=>job.status==='complete'||plannerStopped.has(job.status)))throw Object.assign(Error('Часть карточек требует проверки. Откройте «Тест».'),{terminal:true});
   }catch(error){
+    if(readGeneration().pending?.plannerKey!==p.plannerKey)return;
     if(error.terminal)commitPending({paused:true},p.plannerKey);
     publish({phase:error.terminal?'paused':'running',runId:p.runId||null,message:error.terminal?error.message:'Попытка сохранена. Продолжаем проверять ответ сайта…'});
   }
