@@ -118,16 +118,18 @@ export async function reassembleStored(env,jobId,auth,options={}){
  if(previous.generation?.category!=='C2'&&lightDirection!=='auto')fail(400,'Light override applies to C2 surface only');
  if(previous.generation?.mode!=='modular'||!previous.foreground_key)fail(409,'Stored transparent modular foreground required');
  if(previous.composition?.version===COMPOSITION_VERSION&&(previous.composition?.surface?.shadow?.lighting?.override||'auto')===lightDirection)return {assembled:true,provider_calls:0,idempotent:true,composition:previous.composition};
+ const processing=createProcessing(env,job,{kind:'assembly-rebuild'});await processing.event('assembly_started','started');
  const object=await env.ARTIFACTS.get(previous.foreground_key);if(!object)fail(409,'Stored foreground missing');
  const bytes=new Uint8Array(await object.arrayBuffer());if(await sha(bytes)!==previous.foreground_sha256)fail(409,'Foreground SHA mismatch');
- const layer=await decodePNG(bytes);validateAlpha(layer,previous.generation);
- const card=proceduralCard(layer,previous.generation.category,{lightDirection});validateAlpha(card,{mode:'whole_card'});
- const final=await encodePNG(card.width,card.height,card.rgba),hash=await sha(final),prefix=`runs/${job.run_id}/${job.object_id}/assemblies/${hash}`;
+ const layer=await processing.stage('assembly_source_decode',()=>decodePNG(bytes));validateAlpha(layer,previous.generation);
+ const card=await processing.stage('assembly_render',()=>proceduralCard(layer,previous.generation.category,{lightDirection}));validateAlpha(card,{mode:'whole_card'});
+ const final=await processing.stage('assembly_png_encode',()=>encodePNG(card.width,card.height,card.rgba)),hash=await sha(final),prefix=`runs/${job.run_id}/${job.object_id}/assemblies/${hash}`;
  const manifest={...previous,final_key:prefix+'.png',final_sha256:hash,composition:card.composition,artistic_review:'unreviewed',assembly_cost_nanodollars:0,assembly_created_at:new Date().toISOString(),previous_assemblies:[...(previous.previous_assemblies||[]),{final_key:result.final_key,manifest_key:result.manifest_key,final_sha256:previous.final_sha256}]};
- await env.ARTIFACTS.put(manifest.final_key,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,prefix+'.json',manifest);
+ await processing.stage('assembly_store',async()=>{await env.ARTIFACTS.put(manifest.final_key,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,prefix+'.json',manifest);});
  const changed=await query(env,'UPDATE results SET final_key=?,manifest_key=? WHERE job_id=? AND final_key=?',manifest.final_key,prefix+'.json',jobId,result.final_key).run();
  if(!changed.meta.changes)fail(409,'Result changed during assembly; refresh before retrying');
  await journalEvent(env,jobId,'assembly-'+hash,'assembly_rebuilt',{version:COMPOSITION_VERSION,provider_calls:0,foreground_sha256:previous.foreground_sha256,final_sha256:hash,previous_final_sha256:previous.final_sha256,surface:card.composition.surface});
+ await processing.end('complete');
  return {assembled:true,provider_calls:0,composition:card.composition};
 }
 async function sendFinalization(env,job,processing){
