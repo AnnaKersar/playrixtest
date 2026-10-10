@@ -15,7 +15,7 @@ import { mockPNG, finalPNG, encodePNG, decodePNG, pinnedReferencePNG } from './p
 import { planMock, PLANNER_VERSION } from './planner-contract.mjs';
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
-async function contractMockPNG(contract){const bytes=await mockPNG(1376,1536);if(contract?.background!=='opaque')return bytes;const image=proceduralCard(await decodePNG(bytes),'C1');return encodePNG(image.width,image.height,image.rgba);}
+async function contractMockPNG(contract,size=[1376,1536]){const bytes=await mockPNG(...size);if(contract?.background!=='opaque')return bytes;const image=proceduralCard(await decodePNG(bytes),'C1');return encodePNG(image.width,image.height,image.rgba);}
 const query=(env,sql,...args)=>env.DB.prepare(sql).bind(...args);
 const one=(env,sql,...args)=>query(env,sql,...args).first();
 const all=async(env,sql,...args)=>(await query(env,sql,...args).all()).results;
@@ -63,7 +63,7 @@ async function createRun(env,body,auth){
   }
   if(body.planner_request_id!==undefined){if(!safeId(body.planner_request_id))fail(400,'Invalid planner request');const origin=await one(env,'SELECT principal_id FROM planner_requests WHERE id=?',body.planner_request_id);if(!origin||origin.principal_id!==auth.principalId)fail(403,'Planner origin access denied');}
   if(body.requestId!==undefined&&!safeId(body.requestId))fail(400,'Invalid stable request ID');
-  const context=experimentContext(body);const runId=body.requestId?'run_'+(await sha(auth.principalId+'|'+body.requestId)).slice(0,48):crypto.randomUUID(),frozen={version:'run/v1',id:runId,experiment:context,mode,...(body.planner_request_id?{planner_request_id:body.planner_request_id}:{}),principal_id:auth.principalId,reservation:mode==='live'?reservationFor(env,'image',auth.principalId):0,model:IMAGE_MODEL,provider_version:PROVIDER_VERSION,planner_version:PLANNER_VERSION,object_content_policy_version:OBJECT_CONTENT_POLICY_VERSION,native:[1376,1536],final:[860,960],quality:'medium',background:'transparent',reference_manifest_sha:mode==='live'?env.APPROVED_REFERENCE_MANIFEST_SHA256:null,art_direction_sha:manifest?.art_direction_sha256||null,objects:objects.map(o=>({...(o.category?{generation:generationContract(o.category,o.generation_mode)}:{}),object_id:o.object_id,name:String(o.name||o.object_id).slice(0,200),category:['C1','C2','C3','C4'].includes(o.category)?o.category:null,asset_stage:o.category==='C3'?'object_with_surface':o.category==='C4'?'scene':'foreground',prompt:manifest?compileObjectPrompt(manifest,o.brief,o.category?generationContract(o.category,o.generation_mode):null):`Synthetic mock fixture only.\n${o.brief}`}))};
+  const context=experimentContext(body);const runId=body.requestId?'run_'+(await sha(auth.principalId+'|'+body.requestId)).slice(0,48):crypto.randomUUID(),frozen={version:'run/v1',id:runId,experiment:context,mode,...(body.planner_request_id?{planner_request_id:body.planner_request_id}:{}),principal_id:auth.principalId,reservation:mode==='live'?reservationFor(env,'image',auth.principalId):0,model:IMAGE_MODEL,provider_version:PROVIDER_VERSION,planner_version:PLANNER_VERSION,object_content_policy_version:OBJECT_CONTENT_POLICY_VERSION,native:[864,960],final:[864,960],quality:'medium',background:'transparent',reference_manifest_sha:mode==='live'?env.APPROVED_REFERENCE_MANIFEST_SHA256:null,art_direction_sha:manifest?.art_direction_sha256||null,objects:objects.map(o=>({...(o.category?{generation:generationContract(o.category,o.generation_mode)}:{}),object_id:o.object_id,name:String(o.name||o.object_id).slice(0,200),category:['C1','C2','C3','C4'].includes(o.category)?o.category:null,asset_stage:o.category==='C3'?'object_with_surface':o.category==='C4'?'scene':'foreground',prompt:manifest?compileObjectPrompt(manifest,o.brief,o.category?generationContract(o.category,o.generation_mode):null):`Synthetic mock fixture only.\n${o.brief}`}))};
   const text=JSON.stringify(frozen),key=`runs/${runId}/frozen-${await sha(text)}.json`;const prior=await one(env,'SELECT frozen_sha FROM runs WHERE id=?',runId);if(prior){if(prior.frozen_sha!==await sha(text))fail(409,'requestId input conflict');return {runId,mode,idempotent:true};}await env.ARTIFACTS.put(key,text,{httpMetadata:{contentType:'application/json'}});
   const statements=[query(env,'INSERT OR IGNORE INTO runs (id,mode,name,frozen_key,frozen_sha,created_at,principal_id) VALUES (?,?,?,?,?,?,?)',runId,mode,String(body.name||'Untitled study').slice(0,200),key,await sha(text),new Date().toISOString(),auth.principalId)];
   for(const object of objects){const jobId=`${runId}_${object.object_id}`;statements.push(query(env,'INSERT OR IGNORE INTO jobs (id,run_id,object_id) VALUES (?,?,?)',jobId,runId,object.object_id),query(env,'INSERT OR IGNORE INTO outbox (job_id) VALUES (?)',jobId));}await env.DB.batch(statements);const saved=await one(env,'SELECT frozen_sha FROM runs WHERE id=?',runId);if(saved.frozen_sha!==await sha(text))fail(409,'requestId input conflict');
@@ -77,6 +77,8 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     if(await sha(bytes)!==receipt.raw_sha256)throw Error('Stored raw SHA mismatch');
     return {receipt,bytes};
   },{},value=>({input_bytes:value.bytes.length}));
+  const savedRun=await one(env,'SELECT frozen_key FROM runs WHERE id=?',job.run_id),savedFrozen=await getJSON(env,savedRun.frozen_key);
+  const directSize=savedFrozen.native?.[0]===864&&savedFrozen.native?.[1]===960?savedFrozen.native:null;
   const contract=await processing.stage('read_generation_contract',async()=>{
     const run=await one(env,'SELECT frozen_key FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key);
     return frozen.objects.find(o=>o.object_id===job.object_id)?.generation;
@@ -86,7 +88,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     const source=await processing.stage('source_decoding_png',()=>decodePNG(bytes),{input_bytes:bytes.length},image=>({width:image.width,height:image.height,channels:image.channels}));
     sourceQA=await processing.stage('source_alpha_validation',()=>validateAlpha(source,contract));
   }
-  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque'},deps.pngOperations);
+  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque',directSize},deps.pngOperations);
   let final=foreground,composition=null,foregroundKey=null;
   if(contract?.mode==='modular'){
     const layer=await processing.stage('foreground_decoding_png',()=>decodePNG(foreground),{input_bytes:foreground.length},image=>({width:image.width,height:image.height,channels:image.channels}));
@@ -96,7 +98,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     await processing.stage('foreground_r2_write',()=>env.ARTIFACTS.put(foregroundKey,foreground,{httpMetadata:{contentType:'image/png'}}),{input_bytes:foreground.length});
   }
   const finalKey=`runs/${job.run_id}/${job.object_id}/final.png`,manifestKey=`runs/${job.run_id}/${job.object_id}/manifest.json`;
-  const manifest={version:'image-result/v1',job_id:job.id,mode:attempt.mode,provider:PROVIDER_VERSION,model:IMAGE_MODEL,native:[1376,1536],final:[860,960],resampler:'premultiplied-lanczos3-js/v1',raw_sha256:receipt.raw_sha256,final_sha256:await sha(final),request_id:receipt.request_id,usage:receipt.usage,cost_nanodollars:receipt.cost,artistic_review:'unreviewed',alpha:'RGBA8',...(contract?{generation:contract,source_alpha_qa:sourceQA,composition,foreground_key:foregroundKey,foreground_sha256:foregroundKey?await sha(foreground):null,final_opaque:true}:{}),raw_key:receipt.raw_key,final_key:finalKey};
+  const manifest={version:'image-result/v1',job_id:job.id,mode:attempt.mode,provider:PROVIDER_VERSION,model:IMAGE_MODEL,native:savedFrozen.native,final:savedFrozen.final,resampler:directSize?'none-direct-native/v1':'premultiplied-lanczos3-js/v1',raw_sha256:receipt.raw_sha256,final_sha256:await sha(final),request_id:receipt.request_id,usage:receipt.usage,cost_nanodollars:receipt.cost,artistic_review:'unreviewed',alpha:'RGBA8',...(contract?{generation:contract,source_alpha_qa:sourceQA,composition,foreground_key:foregroundKey,foreground_sha256:foregroundKey?await sha(foreground):null,final_opaque:true}:{}),raw_key:receipt.raw_key,final_key:finalKey};
   await processing.stage('final_r2_write',async()=>{
     await env.ARTIFACTS.put(finalKey,final,{httpMetadata:{contentType:'image/png'}});
     await putJSON(env,manifestKey,manifest);
@@ -106,7 +108,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),
     query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)
   ]));
-  await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:[860,960]});
+  await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:savedFrozen.final});
 }
 async function sendFinalization(env,job,processing){
   await processing.stage('finalization_send',()=>env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id,parentExecutionId:processing.executionId}));
@@ -130,7 +132,7 @@ export async function processJob(env,jobId,deps={}){
   try{
     await query(env,"UPDATE jobs SET status='running' WHERE id=?",job.id).run();await processing.event('provider_starting','started');
     await processing.journal('provider-started','provider_started',{started_at:new Date(started).toISOString(),mode:run.mode});invoked=true;
-    const answer=await processing.stage('provider_response',async()=>run.mode==='mock'?{png:await contractMockPNG(object.generation),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background}),{},answer=>({output_bytes:answer.png.length}));
+    const answer=await processing.stage('provider_response',async()=>run.mode==='mock'?{png:await contractMockPNG(object.generation,frozen.native),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background,size:frozen.native.join('x')}),{},answer=>({output_bytes:answer.png.length}));
     const rawKey=`runs/${job.run_id}/${job.object_id}/raw.png`,receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`,cost=run.mode==='mock'?0:usageCost(answer.usage);
     await processing.journal('provider-returned','provider_returned',{finished_at:new Date().toISOString(),elapsed_ms:Date.now()-started,request_id:answer.requestId,requested_model:frozen.model,actual_model:answer.model||null,usage:answer.usage,usage_calculated_cost_nanodollars:cost,reservation_nanodollars:reserve,invoice_actual_cost_nanodollars:null,raw_sha256:await sha(answer.png)});
     await processing.stage('raw_r2_write',()=>env.ARTIFACTS.put(rawKey,answer.png,{httpMetadata:{contentType:'image/png'}}),{input_bytes:answer.png.length});

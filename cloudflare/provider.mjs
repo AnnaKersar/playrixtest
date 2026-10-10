@@ -10,7 +10,8 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch,options={}) {
   if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live provider disabled');
   if(sheets.length!==13)throw Error('Exactly 13 sheets required');
   const background=options.background||'transparent';if(!['transparent','opaque'].includes(background))throw Error('Invalid background mode');
-  const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size:'1376x1536',quality:'medium',background,output_format:'png',prompt}))body.append(k,v);
+  const size=options.size||'1376x1536';if(!['1376x1536','864x960'].includes(size))throw Error('Invalid requested image size');
+  const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size,quality:'medium',background,output_format:'png',prompt}))body.append(k,v);
   sheets.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/png'}),`sheet-${i+1}.png`));
   // Exactly one send. No SDK retries, redirects, alternative models or replay after timeout.
   const response=await fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`},body,redirect:'manual',signal:AbortSignal.timeout(240000)});

@@ -36,11 +36,33 @@ export async function mockPNG(width=860,height=960) {
 export function resizeRGBA(src,options={}) {
   if(src.width!==1376||src.height!==1536||(src.channels!==4&&!(options.allowRGB&&src.channels===3)))throw Error('Expected native 1376x1536 RGBA8');
   const w=860,h=960,scale=src.width/w,sinc=x=>x===0?1:Math.sin(Math.PI*x)/(Math.PI*x),kernel=x=>Math.abs(x)<3?sinc(x)*sinc(x/3):0;
-  const weights=(out,size)=>Array.from({length:out},(_,i)=>{const center=(i+.5)*scale-.5,items=[];let total=0;for(let j=Math.ceil(center-3*scale);j<=Math.floor(center+3*scale);j++){const k=kernel((j-center)/scale);items.push([Math.max(0,Math.min(size-1,j)),k]);total+=k;}return items.map(([j,k])=>[j,k/total]);});
-  const wx=weights(w,src.width),wy=weights(h,src.height),out=new Uint8Array(w*h*4),rows=new Map();
-  const horizontal=sy=>{if(rows.has(sy))return rows.get(sy);const row=new Float32Array(w*4);for(let x=0;x<w;x++){const dest=x*4;for(const [sx,k]of wx[x]){const p=(sy*src.width+sx)*4,a=src.rgba[p+3]/255;row[dest]+=src.rgba[p]*a*k;row[dest+1]+=src.rgba[p+1]*a*k;row[dest+2]+=src.rgba[p+2]*a*k;row[dest+3]+=a*k;}}rows.set(sy,row);return row;};
-  for(let y=0;y<h;y++){const minRow=Math.min(...wy[y].map(item=>item[0]));for(const sy of rows.keys())if(sy<minRow)rows.delete(sy);const inputs=wy[y].map(([sy,k])=>[horizontal(sy),k]);for(let x=0;x<w;x++){const val=[0,0,0,0],dest=(y*w+x)*4,q=x*4;for(const [row,k]of inputs){val[0]+=row[q]*k;val[1]+=row[q+1]*k;val[2]+=row[q+2]*k;val[3]+=row[q+3]*k;}const a=Math.max(0,Math.min(1,val[3]));for(let c=0;c<3;c++)out[dest+c]=a>1e-6?Math.max(0,Math.min(255,Math.round(val[c]/a))):0;out[dest+3]=Math.round(a*255);}}
-
+  const weights=(out,size)=>Array.from({length:out},(_,i)=>{
+    const center=(i+.5)*scale-.5,first=Math.ceil(center-3*scale),last=Math.floor(center+3*scale),indices=new Int32Array(last-first+1),values=new Float64Array(indices.length);let total=0;
+    for(let j=first;j<=last;j++){const k=kernel((j-center)/scale),n=j-first;indices[n]=Math.max(0,Math.min(size-1,j));values[n]=k;total+=k;}
+    for(let n=0;n<values.length;n++)values[n]/=total;
+    return {indices,values};
+  });
+  const wx=weights(w,src.width),wy=weights(h,src.height),out=new Uint8Array(w*h*4),rows=new Map(),pixels=src.rgba;
+  const horizontal=sy=>{
+    if(rows.has(sy))return rows.get(sy);const row=new Float32Array(w*4),base=sy*src.width*4;
+    for(let x=0;x<w;x++){const dest=x*4,{indices,values}=wx[x];for(let n=0;n<indices.length;n++){
+      const p=base+indices[n]*4,k=values[n],a=pixels[p+3]/255;
+      row[dest]+=pixels[p]*a*k;row[dest+1]+=pixels[p+1]*a*k;row[dest+2]+=pixels[p+2]*a*k;row[dest+3]+=a*k;
+    }}rows.set(sy,row);return row;
+  };
+  for(let y=0;y<h;y++){
+    const {indices,values}=wy[y],minRow=indices[0];for(const sy of rows.keys())if(sy<minRow)rows.delete(sy);
+    const inputs=new Array(indices.length);for(let n=0;n<indices.length;n++)inputs[n]=horizontal(indices[n]);
+    for(let x=0;x<w;x++){
+      let r=0,g=0,b=0,alpha=0;const q=x*4,dest=(y*w+x)*4;
+      for(let n=0;n<inputs.length;n++){const row=inputs[n],k=values[n];r+=row[q]*k;g+=row[q+1]*k;b+=row[q+2]*k;alpha+=row[q+3]*k;}
+      const a=Math.max(0,Math.min(1,alpha));
+      out[dest]=a>1e-6?Math.max(0,Math.min(255,Math.round(r/a))):0;
+      out[dest+1]=a>1e-6?Math.max(0,Math.min(255,Math.round(g/a))):0;
+      out[dest+2]=a>1e-6?Math.max(0,Math.min(255,Math.round(b/a))):0;
+      out[dest+3]=Math.round(a*255);
+    }
+  }
   return {width:w,height:h,rgba:out};
 }
 export async function finalPNG(bytes,onPhase=async()=>{},options={},operations={}) {
@@ -51,6 +73,10 @@ export async function finalPNG(bytes,onPhase=async()=>{},options={},operations={
   };
   const dimensions=image=>({width:image.width,height:image.height,channels:image.channels||4});
   const src=await phase('decoding_png',()=> (operations.decode||decodePNG)(bytes),{input_bytes:bytes.length},dimensions);
+  if(options.directSize){
+    if(src.width!==options.directSize[0]||src.height!==options.directSize[1]||(src.channels!==4&&!(options.allowRGB&&src.channels===3)))throw Error('Provider output dimensions or channels differ from frozen direct size');
+    await onPhase('native_size_verified',{outcome:'succeeded',...dimensions(src)});return bytes;
+  }
   const resized=await phase('resizing_png',()=> (operations.resize||resizeRGBA)(src,options),dimensions(src),dimensions);
   return phase('encoding_png',()=> (operations.encode||encodePNG)(resized.width,resized.height,resized.rgba),dimensions(resized),value=>({output_bytes:value.length}));
 }
