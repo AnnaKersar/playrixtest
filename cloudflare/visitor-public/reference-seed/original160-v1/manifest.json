@@ -1056,19 +1056,17 @@
       "sha256": "9be3de3107738170499fe5910186cb02d6e9b5292be3e7cc580559426e004703",
       "name": "Рожок голубого мороженого",
       "collection": "Amusement",
-      "category": null,
+      "category": "C1",
       "categoryEvidence": {
-        "value": null,
+        "value": "C1",
         "confidence": "low",
-        "alternatives": [
-          "C1"
-        ],
-        "review_status": "unresolved",
+        "alternatives": [],
+        "review_status": "confirmed",
         "named_in_user_review": true,
-        "source": "preserved_v4",
-        "caveat": "Preserved working analytical label; not official employer classification. No source label changed by this layer inventory."
+        "source": "user_review_2026-10-10",
+        "caveat": "Working analytical category confirmed by the user on 2026-10-10; not official employer classification."
       },
-      "category_status": "unresolved",
+      "category_status": "working-audited",
       "attribution": "Playrix — original reference"
     },
     {
@@ -1516,20 +1514,17 @@
       "sha256": "93aa5c93cf48d0624ca32ac447ee9660570fdabc1f96c75562fbe9ad7e9f87d2",
       "name": "Диджейский пульт и наушники",
       "collection": "Music Fest",
-      "category": null,
+      "category": "C2",
       "categoryEvidence": {
-        "value": null,
+        "value": "C2",
         "confidence": "medium",
-        "alternatives": [
-          "C1",
-          "C2"
-        ],
-        "review_status": "unresolved",
+        "alternatives": [],
+        "review_status": "confirmed",
         "named_in_user_review": true,
-        "source": "preserved_v4",
-        "caveat": "Preserved working analytical label; not official employer classification. No source label changed by this layer inventory."
+        "source": "user_review_2026-10-10",
+        "caveat": "Working analytical category confirmed by the user on 2026-10-10; not official employer classification."
       },
-      "category_status": "unresolved",
+      "category_status": "working-audited",
       "attribution": "Playrix — original reference"
     },
     {
