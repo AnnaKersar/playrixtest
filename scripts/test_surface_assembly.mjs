@@ -51,3 +51,13 @@ const left=await data('/api/reassemble',{jobId:j.id,lightDirection:'upper-right'
 console.log('PASS editor palette object/string fallback, reversible forward/inverse projection, four inferred light sides, opposite shadow direction, manual override, contact-to-tip fade');
 
 const near=projectShadowPoint(50,70,projection),far=projectShadowPoint(50,20,projection);assert(solidShadow[Math.round(near[1])*100+Math.round(near[0])]>solidShadow[Math.round(far[1])*100+Math.round(far[0])]*1.5,'Shadow is not darker at contact');
+
+import {encodePNG} from '../cloudflare/png.mjs';
+const uploadBefore=await data('/api/asset?job='+j.id+'&kind=manifest'),uploadedCard=proceduralCard(await decodePNG(bucket.map.get(uploadBefore.foreground_key)),'C2',{lightDirection:'upper-left'}),uploadedBytes=await encodePNG(uploadedCard.width,uploadedCard.height,uploadedCard.rgba),uploadBody={jobId:j.id,expectedForegroundSHA:uploadBefore.foreground_sha256,expectedFinalSHA:uploadBefore.final_sha256,rendererVersion:COMPOSITION_VERSION,composition:uploadedCard.composition,pngBase64:Buffer.from(uploadedBytes).toString('base64')};
+assert.equal((await call('/api/reassemble-upload',uploadBody,{token:await jwt({email:'guest@example.invalid'})})).status,403);
+assert.equal((await call('/api/reassemble-upload',{...uploadBody,expectedFinalSHA:'changed'})).status,409);
+assert.equal((await call('/api/reassemble-upload',{...uploadBody,composition:{...uploadBody.composition,surface:{...uploadBody.composition.surface,heightFraction:.1}}})).status,400);
+const saved=await data('/api/reassemble-upload',uploadBody);assert.equal(saved.provider_calls,0);const uploadAfter=await data('/api/asset?job='+j.id+'&kind=manifest');assert.equal(uploadAfter.assembly_renderer,'browser-procedural-editor');assert.equal(await sha(bucket.map.get(uploadAfter.foreground_key)),sourceHash);assert.deepEqual(db.prepare('SELECT * FROM attempts WHERE job_id=?').get(j.id),attemptBefore);assert.equal(providerCalls,0);
+assert.equal((await data('/api/reassemble-upload',{...uploadBody,expectedFinalSHA:uploadAfter.final_sha256})).idempotent,true);
+const opaqueImage=await decodePNG(uploadedBytes);opaqueImage.rgba[3]=0;const transparentBytes=await encodePNG(opaqueImage.width,opaqueImage.height,opaqueImage.rgba);const rejected=await call('/api/reassemble-upload',{...uploadBody,expectedFinalSHA:uploadAfter.final_sha256,pngBase64:Buffer.from(transparentBytes).toString('base64')});assert.equal(rejected.ok,false);
+console.log('PASS browser-editor save: owner-only, stale-pointer rejection, surface contract, opaque PNG validation, immutable source and historical assemblies, unchanged cost, zero provider calls');
