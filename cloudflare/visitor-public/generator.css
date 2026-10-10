@@ -4,3 +4,15 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 .card-actions button{cursor:pointer}.card-actions button:disabled{opacity:.7}.card-actions{flex-wrap:wrap}.card-actions button{flex-basis:100%;padding:3px}.card-actions a{font-size:10px}
 
 .card-actions a,.card-actions button{min-height:24px;line-height:1.15;box-shadow:none;box-sizing:border-box}
+
+.collection-advanced{margin:16px 0;padding:12px;border:1px solid #d2b380;border-radius:14px;background:#fff9e9;color:#5a391d}
+.collection-advanced summary{cursor:pointer;font-weight:800;font-size:15px}
+.collection-advanced p{font-size:12px;line-height:1.5}
+.collection-advanced fieldset{border:0;padding:0;margin:0;min-width:0}
+.collection-advanced input{width:100%;box-sizing:border-box}
+.collection-advanced .category-row{margin:12px 0;padding:10px;border-radius:10px;background:#fff2d5;border:1px solid #e4c79b}
+.collection-advanced .category-row h3{margin:0 0 8px;font-size:14px}
+.collection-advanced label{display:block;margin:8px 0 4px;font-size:12px;font-weight:700}
+.collection-advanced button{width:100%;padding:10px;border-radius:10px;background:#f4c563;color:#593712;border:1px solid #b88b42;font-weight:700;cursor:pointer}
+.collection-advanced .advanced-hint{color:#755639}
+#advanced-total{font-weight:700}

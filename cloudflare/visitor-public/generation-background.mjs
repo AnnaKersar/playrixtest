@@ -18,12 +18,12 @@ function commitPending(patch,plannerKey){
   if(state.pending?.plannerKey!==plannerKey)return null;
   Object.assign(state.pending,patch);save(state);return state;
 }
-export async function startGeneration(name,wishes){
-  const draft=collectionBrief(name,wishes);plannerPayload(draft);
+export async function startGeneration(name,wishes,advanced={}){
+  const draft=collectionBrief(name,wishes,advanced);plannerPayload(draft);
   const start=()=>{
     const state=readGeneration();
-    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,startedAt:Date.now()};
-    state.pending.paused=false;state.name=name;state.wishes=wishes;save(state);
+    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft,startedAt:Date.now()};
+    state.pending.paused=false;state.name=name;state.wishes=wishes;state.advanced=advanced;save(state);
     publish({phase:'running',message:'Продолжаем генерацию…',runId:state.pending.runId||null});
   };
   if(navigator.locks)await navigator.locks.request('playrix-generation-step',start);else start();
@@ -37,7 +37,7 @@ async function stableId(prefix,principal,key){
 async function step(){
   const state=readGeneration(),p=state.pending;
   if(!p||p.paused)return;
-  const draft=collectionBrief(p.name,p.wishes);
+  const draft=p.draft||collectionBrief(p.name,p.wishes);
   try{
     if(!p.expectedPlanId||!p.expectedRunId){const identity=await api('/api/preflight');p.expectedPlanId=await stableId('planner_',identity.principalId,p.plannerKey);p.expectedRunId=await stableId('run_',identity.principalId,p.runKey);commitPending({expectedPlanId:p.expectedPlanId,expectedRunId:p.expectedRunId},p.plannerKey);}
     if(!p.planId){
@@ -52,7 +52,7 @@ async function step(){
       if(plan.result?.validation_error)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
         if(await existing('/api/run?run='+encodeURIComponent(p.expectedRunId))){const fresh=commitPending({runId:p.expectedRunId},p.plannerKey);if(fresh){fresh.runId=p.expectedRunId;save(fresh);}return;}
-        const approved=plannedCollection(draft,plan.result.plan);
+        let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
         const response=await api('/api/runs',{...imagePayload(approved),requestId:p.runKey,planner_request_id:p.planId,mode:'live',approval:'I approve one paid attempt per object'});
         const fresh=commitPending({runId:response.runId},p.plannerKey);
         if(fresh){fresh.runId=response.runId;save(fresh);}return;
@@ -72,7 +72,7 @@ async function step(){
       fresh.completed={runId:p.runId,name:result.run.name||p.name,count:jobs.length,at:Date.now()};
       save(fresh);publish({phase:'complete',runId:p.runId,message:'Все '+jobs.length+' карточек готовы. Коллекция сохранена в истории.'});showNotification();return;
     }
-    publish({phase:'running',runId:p.runId,message:imageProgress(jobs)});
+    publish({phase:'running',runId:p.runId,message:imageProgress(jobs,draft.card_count)});
     if(jobs.length&&jobs.every(job=>job.status==='complete'||plannerStopped.has(job.status)))throw Object.assign(Error('Часть карточек требует проверки. Откройте «Тест».'),{terminal:true});
   }catch(error){
     if(error.terminal)commitPending({paused:true},p.plannerKey);

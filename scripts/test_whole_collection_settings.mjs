@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {collectionBrief,collectionSettings,plannedCollection,imagePayload} from '../cloudflare/visitor-public/generator-model.mjs';
+import {generationContract,generationInstructions} from '../cloudflare/generation-contract.mjs';
+const object=i=>({object_id:'object_'+i,main_identity:'Film prop '+i,production_category:'C2',asset_stage:'foreground_only',object_brief:'One clean illustrated film prop',contents:[],decoration:[]});
+const group=(name,count,offset=0)=>({name,coherence_rationale:'Film genre',objects:Array.from({length:count},(_,i)=>object(i+offset))});
+const base=collectionBrief('Films','');
+assert.equal(base.collection_settings.category_count,1);assert.equal(base.card_count,10);
+assert.match(base.constraints,/Films -> category dimension film genres/);
+const planned=plannedCollection(base,{collections:[group('Comedy',10)]});
+const payload=imagePayload(planned);assert.equal(payload.objects.length,10);
+assert(payload.objects.every(o=>o.generation_mode==='whole_card'&&o.brief.includes('Thematic category: Comedy')&&!o.brief.includes('Only the background above the surface is transparent')));
+const custom=collectionBrief('Films','',{category_count:2,category_theme:'Film genres',categories:[{name:'Comedy',card_count:3},{name:'Adventure',card_count:7}]});
+assert.equal(custom.card_count,10);
+assert.equal(imagePayload(plannedCollection(custom,{collections:[group('Comedy',3),group('Adventure',7,3)]})).objects.length,10);
+assert.equal(collectionBrief('Films','',{category_count:2}).card_count,20);
+assert.throws(()=>plannedCollection(custom,{collections:[group('Comedy',4),group('Adventure',6,4)]}));
+assert.throws(()=>plannedCollection(custom,{collections:[group('Wrong name',3),group('Adventure',7,3)]}));
+assert.throws(()=>collectionSettings({category_count:3}));
+assert.throws(()=>collectionSettings({categories:[{card_count:0}]}));
+for(const category of ['C1','C2','C3','C4']){
+ const contract=generationContract(category,'whole_card','test|'+category),prompt=generationInstructions(contract);
+ assert.equal(contract.background,'opaque');assert.match(prompt,new RegExp(category+':'));
+ assert.match(prompt,/42-100%/);assert.match(prompt,/13\/255/);
+ assert(!prompt.includes('editor adds')&&!prompt.includes('alpha zero'));
+}
+const seen=new Set();for(let i=0;i<30;i++)seen.add(generationContract('C2','whole_card','test|'+i).surface_finish);assert.equal(seen.size,2);
+console.log('PASS default 1×10, inferred genre hierarchy, optional category names/themes/counts, whole-card payloads, reject mismatched plans before image calls, opaque C1-C4 prompts and seeded finishes; paid calls 0');
+

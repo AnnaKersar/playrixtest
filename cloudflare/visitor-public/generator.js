@@ -1,12 +1,34 @@
 import {startGeneration,readGeneration,generationProgress} from './generation-background.mjs';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
-import {PAGE_SIZE,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs';
+import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs';
 const $=id=>document.getElementById(id),key='card-studio-generator/v2';let saved=JSON.parse(localStorage.getItem(key)||'{}'),runId=null,jobs=[],refs=[],page=0,busy=false,ready=false,serial=0,selection=0;const rendered=new Map(),persist=()=>localStorage.setItem(key,JSON.stringify(saved));
 async function api(path,body){let r;try{r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});}catch(e){throw Error('Не удалось получить ответ сайта · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}const raw=await r.text();let d;try{d=JSON.parse(raw);}catch{throw Error('Сайт вернул неожиданный ответ вместо JSON · HTTP '+r.status+' · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}if(!r.ok)throw Error((d.error||String(r.status))+' · '+path.split('?')[0]+(d.diagnostic?' · '+d.diagnostic:''));return d;}
 
 function text(id,value){$(id).textContent=value;}function node(tag,label){const el=document.createElement(tag);if(label)el.textContent=label;return el;}
 $('collection-name').value=saved.name||'';$('producer-wishes').value=saved.wishes||'';
+saved.advanced||={category_count:'',category_theme:'',categories:[]};
+$('category-count').value=saved.advanced.category_count||'';
+$('category-theme').value=saved.advanced.category_theme||'';
+function advancedChanged(){saved.pending=null;persist();updateAdvancedTotal();}
+function updateAdvancedTotal(){try{const s=collectionSettings(saved.advanced);text('advanced-total',s.category_count+' категорий · '+s.total+' карточек · цельная генерация');}catch(e){text('advanced-total',e.message);}}
+function renderCategorySettings(){
+ const count=Number(saved.advanced.category_count)||1;
+ $('category-settings').replaceChildren(...Array.from({length:Math.min(20,Math.max(1,count))},(_,i)=>{
+  const box=node('section');box.className='category-row';box.append(node('h3','Категория '+(i+1)));
+  const row=saved.advanced.categories[i]||={name:'',theme:'',card_count:''};
+  for(const [key,label,placeholder,type]of [['name','Название категории','Система придумает','text'],['theme','Тема этой категории','По общей теме категорий','text'],['card_count','Карточек в категории','10','number']]){
+   const id='category-'+i+'-'+key,l=node('label',label),input=node('input');l.htmlFor=id;input.id=id;input.type=type;input.value=row[key]||'';input.placeholder=placeholder;
+   if(type==='number'){input.min=1;input.max=20;}else input.maxLength=300;
+   input.oninput=()=>{saved.advanced.categories[i][key]=input.value;advancedChanged();};box.append(l,input);
+  }return box;
+ }));updateAdvancedTotal();
+}
+$('category-count').oninput=()=>{saved.advanced.category_count=$('category-count').value;renderCategorySettings();advancedChanged();};
+$('category-theme').oninput=()=>{saved.advanced.category_theme=$('category-theme').value;advancedChanged();};
+$('add-category').onclick=()=>{saved.advanced.category_count=Math.min(20,(Number(saved.advanced.category_count)||1)+1);$('category-count').value=saved.advanced.category_count;renderCategorySettings();advancedChanged();};
+renderCategorySettings();
+
 for(const id of ['collection-name','producer-wishes'])$(id).oninput=()=>{saved.name=$('collection-name').value;saved.wishes=$('producer-wishes').value;persist();};
 function placeholder(index,job){const b=node('button');b.type='button';b.className='collection-card placeholder';b.disabled=true;b.append(node('span',String(index+1)),node('span',job?.object_id||'Карточка'));b.firstChild.className='slot-number';b.lastChild.className='card-label';return b;}
 async function fullCard(job){if(rendered.has(job.id))return rendered.get(job.id);const image=new Image();image.src='/api/asset?job='+encodeURIComponent(job.id);image.alt=job.name||job.object_id;await image.decode();const card={image,type:categoryFor(job,null)};rendered.set(job.id,card);return card;}
@@ -22,7 +44,7 @@ const wait=()=>new Promise(resolve=>setTimeout(resolve,5000));
 function updateGenerationUI(){
   saved=readGeneration();const progress=generationProgress();
   busy=!!saved.pending&&!saved.pending.paused;
-  $('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
+  $('advanced-fields').disabled=busy;$('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
   if(progress.message)text('launch-status',progress.message);
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
@@ -32,7 +54,7 @@ window.addEventListener('generation-progress',updateGenerationUI);
 async function launch(){
   if(busy)return;
   $('launch').disabled=true;
-  try{await refreshReadiness({resume:!!readGeneration().pending?.planId});await startGeneration($('collection-name').value,$('producer-wishes').value);updateGenerationUI();}
+  try{await refreshReadiness({resume:!!readGeneration().pending?.planId});await startGeneration($('collection-name').value,$('producer-wishes').value,saved.advanced);updateGenerationUI();}
   catch(e){text('launch-status',e.message);$('launch').disabled=false;}
 }
 $('launch-form').onsubmit=e=>{e.preventDefault();launch();};
