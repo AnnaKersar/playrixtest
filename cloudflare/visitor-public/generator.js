@@ -10,7 +10,7 @@ $('collection-name').value=saved.name||'';$('producer-wishes').value=saved.wishe
 saved.advanced||={category_count:'',category_theme:'',categories:[]};
 $('category-count').value=saved.advanced.category_count||'';
 $('category-theme').value=saved.advanced.category_theme||'';
-function advancedChanged(){saved.pending=null;persist();updateAdvancedTotal();}
+function advancedChanged(){persist();updateAdvancedTotal();}
 function updateAdvancedTotal(){try{const s=collectionSettings(saved.advanced);text('advanced-total',s.category_count+' категорий · '+s.total+' карточек · цельная генерация');}catch(e){text('advanced-total',e.message);}}
 function renderCategorySettings(){
  const count=Number(saved.advanced.category_count)||1;
@@ -44,7 +44,7 @@ const wait=()=>new Promise(resolve=>setTimeout(resolve,5000));
 function updateGenerationUI(){
   saved=readGeneration();const progress=generationProgress();
   busy=!!saved.pending&&!saved.pending.paused;
-  $('advanced-fields').disabled=busy;$('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
+  $('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
   if(progress.message)text('launch-status',progress.message);
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
