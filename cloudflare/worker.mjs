@@ -84,15 +84,15 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     const run=await one(env,'SELECT frozen_key FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key);
     return frozen.objects.find(o=>o.object_id===job.object_id)?.generation;
   });
-  let sourceQA=null;
+  let sourceQA=null,decodedSource=null;
   if(contract){
     const source=await processing.stage('source_decoding_png',()=>decodePNG(bytes),{input_bytes:bytes.length},image=>({width:image.width,height:image.height,channels:image.channels}));
-    sourceQA=await processing.stage('source_alpha_validation',()=>validateAlpha(source,contract));
+    decodedSource=source;sourceQA=await processing.stage('source_alpha_validation',()=>validateAlpha(source,contract));
   }
-  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque',directSize},deps.pngOperations);
+  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque',directSize},{...deps.pngOperations,...(directSize&&decodedSource&&!deps.pngOperations?.decode?{decode:async()=>decodedSource}:{})});
   let final=foreground,composition=null,foregroundKey=null;
   if(contract?.mode==='modular'){
-    const layer=await processing.stage('foreground_decoding_png',()=>decodePNG(foreground),{input_bytes:foreground.length},image=>({width:image.width,height:image.height,channels:image.channels}));
+    const layer=await processing.stage('foreground_decoding_png',()=>directSize&&decodedSource?decodedSource:decodePNG(foreground),{input_bytes:foreground.length},image=>({width:image.width,height:image.height,channels:image.channels}));
     const card=await processing.stage('composing_card',()=>{const card=proceduralCard(layer,contract.category,{shadowMode:contract.shadow_mode,surfaceMode:contract.surface_mode,surfaceFinish:contract.surface_finish});validateAlpha(card,{mode:'whole_card'});return card;});
     final=await processing.stage('composition_encoding_png',()=>encodePNG(card.width,card.height,card.rgba),{width:card.width,height:card.height},bytes=>({output_bytes:bytes.length}));
     composition=card.composition;foregroundKey=`runs/${job.run_id}/${job.object_id}/foreground.png`;
@@ -323,3 +323,7 @@ export function createWorker(deps={}){return {
   }
 };}
 export default createWorker();
+
+
+
+

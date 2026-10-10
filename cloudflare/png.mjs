@@ -1,14 +1,17 @@
 // Bounded PNG RGB/RGBA8 codec. Reject unsupported formats rather than silently changing alpha.
 const sig = new Uint8Array([137,80,78,71,13,10,26,10]);
 const table = Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
-const crc = bytes => {let n=0xffffffff;for(const b of bytes)n=table[(n^b)&255]^(n>>>8);return (n^0xffffffff)>>>0;};
+const crc = bytes => {let n=0xffffffff;for(let i=0;i<bytes.length;i++)n=table[(n^bytes[i])&255]^(n>>>8);return (n^0xffffffff)>>>0;};
 const concat = arrays => {const out=new Uint8Array(arrays.reduce((n,a)=>n+a.length,0));let p=0;for(const a of arrays){out.set(a,p);p+=a.length;}return out;};
 const chunk = (type,bytes) => {const out=new Uint8Array(bytes.length+12),d=new DataView(out.buffer);d.setUint32(0,bytes.length);out.set(new TextEncoder().encode(type),4);out.set(bytes,8);d.setUint32(bytes.length+8,crc(out.subarray(4,bytes.length+8)));return out;};
 async function stream(bytes, codec) {return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(codec)).arrayBuffer());}
+// Bounded zlib stored blocks avoid a streaming compressor during queue finalization.
+function storedZlib(bytes){const count=Math.ceil(bytes.length/65535),out=new Uint8Array(2+bytes.length+count*5+4);out.set([0x78,0x01]);let p=2,a=1,b=0;for(let start=0;start<bytes.length;start+=65535){const n=Math.min(65535,bytes.length-start);out[p++]=start+n===bytes.length?1:0;out[p++]=n&255;out[p++]=n>>>8;out[p++]=(~n)&255;out[p++]=((~n)>>>8)&255;out.set(bytes.subarray(start,start+n),p);p+=n;for(let i=start;i<start+n;i++){a=(a+bytes[i])%65521;b=(b+a)%65521;}}new DataView(out.buffer).setUint32(p,((b<<16)|a)>>>0);return out;}
 export async function encodePNG(width,height,rgba) {
+  if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||width*height>2500000||rgba.length!==width*height*4)throw Error('Invalid PNG dimensions or pixels');
   const head=new Uint8Array(13),v=new DataView(head.buffer);v.setUint32(0,width);v.setUint32(4,height);head[8]=8;head[9]=6;
   const scan=new Uint8Array(height*(width*4+1));for(let y=0;y<height;y++)scan.set(rgba.subarray(y*width*4,(y+1)*width*4),y*(width*4+1)+1);
-  return concat([sig,chunk('IHDR',head),chunk('IDAT',await stream(scan,new CompressionStream('deflate'))),chunk('IEND',new Uint8Array())]);
+  return concat([sig,chunk('IHDR',head),chunk('IDAT',storedZlib(scan)),chunk('IEND',new Uint8Array())]);
 }
 export async function decodePNG(bytes) {
   if(bytes.length>25*1024*1024 || !sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
@@ -90,4 +93,6 @@ export function pinnedReferencePNG(bytes){
  let p=33,idat=false,ended=false;while(p+12<=bytes.length){const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated reference PNG');const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(type==='IHDR'||type==='tRNS')throw Error('Unsupported reference PNG chunk');if(type==='IDAT'){if(n)idat=true;}if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('Invalid reference PNG end');ended=true;break;}p+=n+12;}
  if(!idat||!ended)throw Error('Incomplete reference PNG');return {width,height,channels};
 }
+
+
 
