@@ -27,6 +27,6 @@ const seen=new Set();for(let i=0;i<30;i++)seen.add(generationContract('C2','whol
 console.log('PASS default 1×10, inferred genre hierarchy, optional category names/themes/counts, whole-card payloads, reject mismatched plans before image calls, opaque C1-C4 prompts and seeded finishes; paid calls 0');
 
 
-assert.deepEqual(cardTypeMix(10),{C1:4,C2:3,C3:2,C4:1});
+assert.deepEqual(cardTypeMix(10),{C1:3,C2:1,C3:2,C4:4});
 const allOne=group('Comedy',10);allOne.objects.forEach(o=>o.production_category='C1');assert.throws(()=>plannedCollection(base,{collections:[allOne]}),/распределение/);
 assert.deepEqual(payload.category_names,['Comedy']);assert.equal(payload.objects[0].thematic_category,'Comedy');

@@ -2,7 +2,7 @@ import {defaults,plannerPayload,imagePayload} from './studio/flow-model.mjs';
 export const PAGE_SIZE=10;
 
 export function cardTypeMix(count){
- const keys=['C1','C2','C3','C4'],weights=[.4,.3,.2,.1],counts=weights.map(w=>Math.floor(w*count));
+ const keys=['C1','C2','C3','C4'],weights=[.3,.1,.2,.4],counts=weights.map(w=>Math.floor(w*count));
  const fractions=weights.map((w,i)=>({i,remainder:w*count-counts[i]})).sort((a,b)=>b.remainder-a.remainder||a.i-b.i);
  for(let left=count-counts.reduce((a,b)=>a+b,0),i=0;left>0;left--,i++)counts[fractions[i%4].i]++;
  if(count>=4)for(let i=0;i<4;i++)if(!counts[i]){const donor=counts.indexOf(Math.max(...counts));counts[donor]--;counts[i]++;}
