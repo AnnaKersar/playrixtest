@@ -239,11 +239,11 @@ export function createWorker(deps={}){return {
         const attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);
         if(!attempt||attempt.mode!=='live'||attempt.principal_id!=='owner')fail(409,'Owner live attempt required');
         if(attempt.status==='closed_reserved_unknown')return json({closed:true,idempotent:true,reservation:attempt.reservation,actual:null,provider_calls:0});
-        if(attempt.actual!=null||attempt.receipt_key||attempt.status!=='claimed'||(Date.now()-Date.parse(attempt.created_at)<20*60*1000&&body.acknowledgeEarlyClosure!==true))fail(409,'Only an expired unresolved claim without a receipt can be closed');
+        if(attempt.actual!=null||attempt.receipt_key||!['claimed','unknown'].includes(attempt.status)||(Date.now()-Date.parse(attempt.created_at)<20*60*1000&&body.acknowledgeEarlyClosure!==true))fail(409,'Only an expired unresolved claim without a receipt can be closed');
         if(body.expectedReservation!==attempt.reservation)fail(409,'Reservation changed; refresh accounting');
         const evidence=await accountingEvidence(env,attempt);if(evidence.receipt_present)fail(409,'Durable receipt exists; recover instead');
         await journalEvent(env,body.jobId,'manual-reserved-unknown','manual_accounting_closure',{principal_id:auth.principalId,reservation_nanodollars:attempt.reservation,actual_cost_nanodollars:null,invoice_actual_cost_nanodollars:null,decision:'Owner accepts unknown actual charge; original reservation remains committed; provider replay forbidden',provider_calls:0});
-        const result=await query(env,"UPDATE attempts SET status='closed_reserved_unknown' WHERE job_id=? AND status='claimed' AND actual IS NULL AND receipt_key IS NULL AND reservation=?",body.jobId,attempt.reservation).run();
+        const result=await query(env,"UPDATE attempts SET status='closed_reserved_unknown' WHERE job_id=? AND status IN ('claimed','unknown') AND actual IS NULL AND receipt_key IS NULL AND reservation=?",body.jobId,attempt.reservation).run();
         if(!result.meta.changes)fail(409,'Attempt changed; refresh accounting');
         return json({closed:true,reservation:attempt.reservation,actual:null,provider_calls:0});
       }
