@@ -77,7 +77,7 @@ async function step(){
       if(plannerStopped.has(plan.status)||plannerStopped.has(plan.stage))throw Object.assign(Error('План остановлен: '+(plan.error||plan.stage||plan.status)),{terminal:true});
       return;
     }
-    const result=await api('/api/run?run='+encodeURIComponent(p.runId));
+    const result=await api('/api/run?compact=1&run='+encodeURIComponent(p.runId));
     const jobs=result.jobs||[];
     if(jobs.length&&jobs.every(job=>job.status==='complete')){
       const fresh=readGeneration();if(fresh.pending?.plannerKey!==p.plannerKey)return;
