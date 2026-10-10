@@ -114,3 +114,24 @@ export function pinnedReferencePNG(bytes){
 
 
 
+
+export function nativeOpaqueRGBPNG(bytes,size){
+ if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024||!sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
+ const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+ if(v.getUint32(8)!==13||new TextDecoder().decode(bytes.subarray(12,16))!=='IHDR')throw Error('PNG header');
+ if(bytes[25]!==2)return null; // RGBA requires pixel-level alpha validation.
+ const width=v.getUint32(16),height=v.getUint32(20);
+ if(width!==size[0]||height!==size[1]||bytes[24]!==8||bytes[26]||bytes[27]||bytes[28])throw Error('Provider output dimensions or format differ from frozen direct size');
+ let p=8,idat=false,ended=false;
+ while(p+12<=bytes.length){
+  const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated PNG');
+  const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));
+  if(crc(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
+  if((p!==8&&type==='IHDR')||type==='tRNS')throw Error('Unsupported opaque PNG chunk');
+  if(type==='IDAT')idat ||= n>0;
+  if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('PNG end');ended=true;break;}
+  p+=n+12;
+ }
+ if(!idat||!ended)throw Error('Incomplete PNG');
+ return {width,height,channels:3,opaque:width*height,nonzero:width*height,nonopaque:0,pixels:width*height,verification:'native-rgb-chunks-crc-sha/v1'};
+}

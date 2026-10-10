@@ -12,7 +12,7 @@ import {createPlan,processPlan,recoverPlan,plannerConfiguration} from './text-pl
 import {privateEditor} from './private-editor.mjs';
 import { authenticate } from './auth.mjs';
 import { sha, imageRequest, IMAGE_MODEL, PROVIDER_VERSION, usageCost } from './provider.mjs';
-import { mockPNG, finalPNG, encodePNG, decodePNG, pinnedReferencePNG } from './png.mjs';
+import { mockPNG, finalPNG, encodePNG, decodePNG, pinnedReferencePNG, nativeOpaqueRGBPNG } from './png.mjs';
 import { planMock, PLANNER_VERSION } from './planner-contract.mjs';
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(status,message)=>{throw Object.assign(Error(message),{status});};
@@ -87,11 +87,15 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
     return frozen.objects.find(o=>o.object_id===job.object_id)?.generation;
   });
   let sourceQA=null,decodedSource=null;
-  if(contract){
+  // Opaque native RGB output has no alpha or composition to decode.
+  const nativeRGB=contract?.mode==='whole_card'&&directSize
+    ?await processing.stage('native_rgb_validation',()=>nativeOpaqueRGBPNG(bytes,directSize)):null;
+  if(nativeRGB)sourceQA=nativeRGB;
+  if(contract&&!nativeRGB){
     const source=await processing.stage('source_decoding_png',()=>decodePNG(bytes),{input_bytes:bytes.length},image=>({width:image.width,height:image.height,channels:image.channels}));
     decodedSource=source;sourceQA=await processing.stage('source_alpha_validation',()=>validateAlpha(source,contract));
   }
-  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque',directSize},{...deps.pngOperations,...(directSize&&decodedSource&&!deps.pngOperations?.decode?{decode:async()=>decodedSource}:{})});
+  const foreground=nativeRGB?bytes:await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque',directSize},{...deps.pngOperations,...(directSize&&decodedSource&&!deps.pngOperations?.decode?{decode:async()=>decodedSource}:{})});
   let final=foreground,composition=null,foregroundKey=null;
   if(contract?.mode==='modular'){
     const layer=await processing.stage('foreground_decoding_png',()=>directSize&&decodedSource?decodedSource:decodePNG(foreground),{input_bytes:foreground.length},image=>({width:image.width,height:image.height,channels:image.channels}));
