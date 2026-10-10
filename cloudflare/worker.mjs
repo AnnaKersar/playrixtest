@@ -1,3 +1,4 @@
+import {prepareSheets} from './reference-sheets.mjs';
 import {categoryVisualSchedule,validateCategoryInventory} from './visitor-public/collection-policy.mjs';
 import {createProcessing,processingHealth,safeProcessingError} from './processing-diagnostics.mjs';
 import {ART_DIRECTION_RULE_VERSION,artDirectionRule} from './art-direction-policy.mjs';
@@ -180,11 +181,11 @@ export async function processJob(env,jobId,deps={}){
     await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();
     await processing.end('collection_policy_required');return;
   }
-  let sheets=[];if(run.mode==='live'){
+  let sheets=[],validatedHashes=[];if(run.mode==='live'){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live disabled before claim');
-    if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');sheets=(await references(env)).sheets;await processing.event('references_checked','succeeded');
+    if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');const {manifest}=await references(env,{manifestOnly:true});const prepared=await prepareSheets(env,manifest,job.id,processing);if(!prepared)return;sheets=prepared.sheets;validatedHashes=prepared.hashes;await processing.event('references_checked','succeeded');
   }
-  const sheetHashes=[];await processing.stage('reference_hashes',async()=>{for(const sheet of sheets)sheetHashes.push(await sha(sheet));});
+  const sheetHashes=[];await processing.stage('reference_hashes',async()=>{sheetHashes.push(...validatedHashes);});
   await processing.stage('journal_prepare',async()=>journalPrepare(env,job.id,{version:'experiment-input/v1',kind:'image',attempt_id:job.id,run_id:job.run_id,principal_id:run.principal_id,mode:run.mode,provider:run.mode==='mock'?'local-mock':'openai',model:frozen.model,provider_version:frozen.provider_version,prompt:object.prompt,prompt_sha256:await sha(object.prompt),parameters:{n:1,size:frozen.native,quality:frozen.quality,background:object.generation?.background||frozen.background,generation_mode:object.generation?.mode||'legacy',shadow_mode:object.generation?.shadow_mode||null,surface_mode:object.generation?.surface_mode||null,surface_finish:object.generation?.surface_finish||null,output_format:'png'},references:{manifest_sha256:frozen.reference_manifest_sha,art_direction_sha256:frozen.art_direction_sha,art_direction_rule_version:frozen.art_direction_rule_version||null,art_direction_rule_sha256:frozen.art_direction_rule_sha256||null,sheet_sha256:sheetHashes},experiment:frozen.experiment||experimentContext(),retry_policy:'one-provider-send; replay forbidden after claim',reservation_nanodollars:frozen.reservation||0,cost_basis:'usage-calculated estimate, not invoice',price_table_nanodollars_per_token:{text_input:5000,image_input:8000,image_output:30000,verification:'existing-code-table; not independently reverified for live admission'},public:false}));
   if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json'))return;
   const reserve=run.mode==='live'?(frozen.reservation||reservationFor(env,'image',run.principal_id)):0;
