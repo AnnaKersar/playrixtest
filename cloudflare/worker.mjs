@@ -1,3 +1,4 @@
+import {createProcessing,processingHealth,safeProcessingError} from './processing-diagnostics.mjs';
 import {generationContract,validateAlpha} from './generation-contract.mjs';
 import {proceduralCard} from './procedural-card.mjs';
 import {attemptPacket} from './attempt-archive.mjs';
@@ -41,7 +42,7 @@ async function accountingEvidence(env,attempt){
 async function readiness(env){const missing=['DB','ARTIFACTS','IMAGE_JOBS','ASSETS'].filter(k=>!env[k]);let schema=false;if(env.DB)try{schema=(await one(env,'SELECT version FROM schema_version WHERE version=3'))?.version===3;}catch{}if(!schema)missing.push('schema.sql migration');let journalReady=false;if(env.DB)try{journalReady=!!await one(env,'SELECT version FROM schema_version WHERE version=5');}catch{}return {version:'cloud-worker/v1',missing,journal_ready:journalReady,mock_ready:missing.length===0,review_ready:missing.filter(k=>k!=='IMAGE_JOBS').length===0,live_enabled:env.LIVE_GENERATION_ENABLED==='true',live_missing:[...missing,...(!journalReady?['experiment journal migration']:[]),...(!env.OPENAI_API_KEY?['OPENAI_API_KEY Secret']:[]),...(!env.REFERENCE_MANIFEST_KEY||!env.APPROVED_REFERENCE_MANIFEST_SHA256?['pinned reference manifest']:[]),...(!env.APPROVED_ART_DIRECTION_SHA256?['pinned Art Direction']:[])],budget:env.DB&&schema?await budgetState(env):null,planner:{version:PLANNER_VERSION,live:env.LIVE_PLANNER_ENABLED==='true',...plannerConfiguration(env)},editor:(env.EDITOR_MANIFEST_KEY&&env.EDITOR_MANIFEST_SHA256)||(env.ARTIFACTS&&await env.ARTIFACTS.get('private-editor/active.json'))?'private-package-configured':'not-provisioned',billing:'Mock has no provider charges; infrastructure usage may be billed.'};}
 async function requireReady(env,pathname){const state=await readiness(env);const queuePaths=new Set(['/api/runs','/api/requeue-run','/api/dispatch','/api/recover','/api/plan-live','/api/planner-recover']);const missing=state.missing.filter(k=>k!=='IMAGE_JOBS'||queuePaths.has(pathname));if(queuePaths.has(pathname)&&!state.journal_ready)missing.push('experiment journal migration');if(missing.length)fail(503,'Missing: '+missing.join(', '));}
 async function queueDiagnostic(env,jobId,stage,detail={}){const safe={stage,at:new Date().toISOString(),...detail};if(safe.error)safe.error=String(safe.error).split(env.OPENAI_API_KEY||'__NO_KEY__').join('[redacted]').slice(0,500);try{await putJSON(env,'queue-diagnostics/'+jobId+'.json',safe);}catch{console.error(JSON.stringify({event:'queue-diagnostic-write-failed',job_id:jobId,stage}));}}
-async function readQueueDiagnostic(env,jobId){try{const o=await env.ARTIFACTS.get('queue-diagnostics/'+jobId+'.json');return o?await o.json():null;}catch{return {stage:'diagnostic_unavailable'};}}
+async function readQueueDiagnostic(env,jobId){try{const o=await env.ARTIFACTS.get('queue-diagnostics/'+jobId+'.json');return o?processingHealth(await o.json()):null;}catch{return {stage:'diagnostic_unavailable'};}}
 async function references(env,{manifestOnly=false}={}){
   if(!env.REFERENCE_MANIFEST_KEY||!env.APPROVED_REFERENCE_MANIFEST_SHA256||!env.APPROVED_ART_DIRECTION_SHA256)throw Error('Private pins not provisioned');
   const obj=await env.ARTIFACTS.get(env.REFERENCE_MANIFEST_KEY);if(!obj)throw Error('Missing reference manifest');const text=await obj.text();if(await sha(text)!==env.APPROVED_REFERENCE_MANIFEST_SHA256)throw Error('Reference manifest pin mismatch');const m=JSON.parse(text);
@@ -68,56 +69,89 @@ async function createRun(env,body,auth){
   for(const object of objects){const jobId=`${runId}_${object.object_id}`;statements.push(query(env,'INSERT OR IGNORE INTO jobs (id,run_id,object_id) VALUES (?,?,?)',jobId,runId,object.object_id),query(env,'INSERT OR IGNORE INTO outbox (job_id) VALUES (?)',jobId));}await env.DB.batch(statements);const saved=await one(env,'SELECT frozen_sha FROM runs WHERE id=?',runId);if(saved.frozen_sha!==await sha(text))fail(409,'requestId input conflict');
   let queuePending=false;try{await dispatch(env);}catch{queuePending=true;}return {runId,mode,queue_pending:queuePending};
 }
-async function finishReceipt(env,job,attempt){
-  const receipt=await getJSON(env,attempt.receipt_key),raw=await env.ARTIFACTS.get(receipt.raw_key);if(!raw)throw Error('Missing stored raw PNG');const bytes=new Uint8Array(await raw.arrayBuffer());if(await sha(bytes)!==receipt.raw_sha256)throw Error('Stored raw SHA mismatch');
-  const run=await one(env,'SELECT frozen_key FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key),object=frozen.objects.find(o=>o.object_id===job.object_id),contract=object?.generation;
-  let sourceQA=null;if(contract){try{sourceQA=validateAlpha(await decodePNG(bytes),contract);}catch(error){await query(env,"UPDATE jobs SET status='needs_review' WHERE id=?",job.id).run();throw error;}}
-  const foreground=await finalPNG(bytes,stage=>queueDiagnostic(env,job.id,stage),{allowRGB:contract?.background==='opaque'});
+async function finishReceipt(env,job,attempt,processing,deps={}){
+  const {receipt,bytes}=await processing.stage('read_raw_receipt',async()=>{
+    const receipt=await getJSON(env,attempt.receipt_key),raw=await env.ARTIFACTS.get(receipt.raw_key);
+    if(!raw)throw Error('Missing stored raw PNG');
+    const bytes=new Uint8Array(await raw.arrayBuffer());
+    if(await sha(bytes)!==receipt.raw_sha256)throw Error('Stored raw SHA mismatch');
+    return {receipt,bytes};
+  },{},value=>({input_bytes:value.bytes.length}));
+  const contract=await processing.stage('read_generation_contract',async()=>{
+    const run=await one(env,'SELECT frozen_key FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key);
+    return frozen.objects.find(o=>o.object_id===job.object_id)?.generation;
+  });
+  let sourceQA=null;
+  if(contract){
+    const source=await processing.stage('source_decoding_png',()=>decodePNG(bytes),{input_bytes:bytes.length},image=>({width:image.width,height:image.height,channels:image.channels}));
+    sourceQA=await processing.stage('source_alpha_validation',()=>validateAlpha(source,contract));
+  }
+  const foreground=await finalPNG(bytes,(stage,detail)=>processing.phase(stage,detail),{allowRGB:contract?.background==='opaque'},deps.pngOperations);
   let final=foreground,composition=null,foregroundKey=null;
   if(contract?.mode==='modular'){
-    const layer=await decodePNG(foreground),card=proceduralCard(layer,contract.category);
-    validateAlpha(card,{mode:'whole_card'});
-    final=await encodePNG(card.width,card.height,card.rgba);composition=card.composition;
-    foregroundKey=`runs/${job.run_id}/${job.object_id}/foreground.png`;
-    await env.ARTIFACTS.put(foregroundKey,foreground,{httpMetadata:{contentType:'image/png'}});
+    const layer=await processing.stage('foreground_decoding_png',()=>decodePNG(foreground),{input_bytes:foreground.length},image=>({width:image.width,height:image.height,channels:image.channels}));
+    const card=await processing.stage('composing_card',()=>{const card=proceduralCard(layer,contract.category);validateAlpha(card,{mode:'whole_card'});return card;});
+    final=await processing.stage('composition_encoding_png',()=>encodePNG(card.width,card.height,card.rgba),{width:card.width,height:card.height},bytes=>({output_bytes:bytes.length}));
+    composition=card.composition;foregroundKey=`runs/${job.run_id}/${job.object_id}/foreground.png`;
+    await processing.stage('foreground_r2_write',()=>env.ARTIFACTS.put(foregroundKey,foreground,{httpMetadata:{contentType:'image/png'}}),{input_bytes:foreground.length});
   }
   const finalKey=`runs/${job.run_id}/${job.object_id}/final.png`,manifestKey=`runs/${job.run_id}/${job.object_id}/manifest.json`;
   const manifest={version:'image-result/v1',job_id:job.id,mode:attempt.mode,provider:PROVIDER_VERSION,model:IMAGE_MODEL,native:[1376,1536],final:[860,960],resampler:'premultiplied-lanczos3-js/v1',raw_sha256:receipt.raw_sha256,final_sha256:await sha(final),request_id:receipt.request_id,usage:receipt.usage,cost_nanodollars:receipt.cost,artistic_review:'unreviewed',alpha:'RGBA8',...(contract?{generation:contract,source_alpha_qa:sourceQA,composition,foreground_key:foregroundKey,foreground_sha256:foregroundKey?await sha(foreground):null,final_opaque:true}:{}),raw_key:receipt.raw_key,final_key:finalKey};
-  await queueDiagnostic(env,job.id,'writing_artifacts');await env.ARTIFACTS.put(finalKey,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,manifestKey,manifest);
-  if(await one(env,'SELECT attempt_id FROM experiment_journal WHERE attempt_id=?',job.id))await journalEvent(env,job.id,'storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:[860,960]});
-  await queueDiagnostic(env,job.id,'updating_records');await env.DB.batch([query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)]);
+  await processing.stage('final_r2_write',async()=>{
+    await env.ARTIFACTS.put(finalKey,final,{httpMetadata:{contentType:'image/png'}});
+    await putJSON(env,manifestKey,manifest);
+  },{output_bytes:final.length});
+  await processing.stage('final_d1_status',()=>env.DB.batch([
+    query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),
+    query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),
+    query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)
+  ]));
+  await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:[860,960]});
+}
+async function sendFinalization(env,job,processing){
+  await processing.stage('finalization_send',()=>env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id,parentExecutionId:processing.executionId}));
+  await processing.end('waiting_finalization');
 }
 export async function processJob(env,jobId,deps={}){
-  await queueDiagnostic(env,jobId,'worker_received');
   const job=await one(env,'SELECT * FROM jobs WHERE id=?',jobId);if(!job)return;
-  const previous=await one(env,'SELECT * FROM attempts WHERE job_id=?',jobId);if(previous){if(await one(env,'SELECT attempt_id FROM experiment_journal WHERE attempt_id=?',jobId))await journalEvent(env,jobId,'replay-prevented','replay_prevented',{});return;} // all ambiguous attempts are permanently non-replayable
+  const processing=deps.processing||createProcessing(env,job);await processing.event('queue_receive','succeeded');
+  const previous=await one(env,'SELECT * FROM attempts WHERE job_id=?',jobId);if(previous){await processing.event('replay_prevented','succeeded',{},'skipped');return;} // all ambiguous attempts are permanently non-replayable
   const run=await one(env,'SELECT * FROM runs WHERE id=?',job.run_id),frozenObject=await env.ARTIFACTS.get(run.frozen_key);if(!frozenObject)throw Error('Missing frozen run');const text=await frozenObject.text();if(await sha(text)!==run.frozen_sha)throw Error('Frozen SHA mismatch');const frozen=JSON.parse(text),object=frozen.objects.find(o=>o.object_id===job.object_id);if(!object)throw Error('Missing frozen object');
-  await queueDiagnostic(env,jobId,'checking_frozen_input');
+  await processing.event('checking_frozen_input','succeeded');
   let sheets=[];if(run.mode==='live'){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live disabled before claim');
-    if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await queueDiagnostic(env,jobId,'checking_references');sheets=(await references(env)).sheets;await queueDiagnostic(env,jobId,'references_checked');
+    if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');sheets=(await references(env)).sheets;await processing.event('references_checked','succeeded');
   }
   await journalPrepare(env,job.id,{version:'experiment-input/v1',kind:'image',attempt_id:job.id,run_id:job.run_id,principal_id:run.principal_id,mode:run.mode,provider:run.mode==='mock'?'local-mock':'openai',model:frozen.model,provider_version:frozen.provider_version,prompt:object.prompt,prompt_sha256:await sha(object.prompt),parameters:{n:1,size:frozen.native,quality:frozen.quality,background:object.generation?.background||frozen.background,generation_mode:object.generation?.mode||'legacy',output_format:'png'},references:{manifest_sha256:frozen.reference_manifest_sha,art_direction_sha256:frozen.art_direction_sha,sheet_sha256:await Promise.all(sheets.map(sha))},experiment:frozen.experiment||experimentContext(),retry_policy:'one-provider-send; replay forbidden after claim',reservation_nanodollars:frozen.reservation||0,cost_basis:'usage-calculated estimate, not invoice',price_table_nanodollars_per_token:{text_input:5000,image_input:8000,image_output:30000,verification:'existing-code-table; not independently reverified for live admission'},public:false});
   const reserve=run.mode==='live'?(frozen.reservation||reservationFor(env,'image',run.principal_id)):0;
   const claimed=run.mode==='live'?await claimPaid(env,job.id,reserve,run.principal_id):Boolean((await query(env,"INSERT OR IGNORE INTO attempts (job_id,mode,status,reservation,created_at,principal_id,budget_scope) VALUES (?,'mock','claimed',0,?,?,'owner')",job.id,new Date().toISOString(),run.principal_id).run()).meta.changes);
-  if(!claimed){await journalEvent(env,job.id,'admission-blocked','admission_blocked',{});await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();return;}
+  if(!claimed){await processing.event('admission_blocked','succeeded',{},'skipped');await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();return;}
   let invoked=false;const started=Date.now();
   try{
-    await query(env,"UPDATE jobs SET status='running' WHERE id=?",job.id).run();await queueDiagnostic(env,jobId,'provider_starting');
-    await journalEvent(env,job.id,'provider-started','provider_started',{started_at:new Date(started).toISOString(),mode:run.mode});invoked=true;
-    const answer=run.mode==='mock'?{png:await contractMockPNG(object.generation),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background});
+    await query(env,"UPDATE jobs SET status='running' WHERE id=?",job.id).run();await processing.event('provider_starting','started');
+    await processing.journal('provider-started','provider_started',{started_at:new Date(started).toISOString(),mode:run.mode});invoked=true;
+    const answer=await processing.stage('provider_response',async()=>run.mode==='mock'?{png:await contractMockPNG(object.generation),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background}),{},answer=>({output_bytes:answer.png.length}));
     const rawKey=`runs/${job.run_id}/${job.object_id}/raw.png`,receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`,cost=run.mode==='mock'?0:usageCost(answer.usage);
-    await journalEvent(env,job.id,'provider-returned','provider_returned',{finished_at:new Date().toISOString(),elapsed_ms:Date.now()-started,request_id:answer.requestId,requested_model:frozen.model,actual_model:answer.model||null,usage:answer.usage,usage_calculated_cost_nanodollars:cost,reservation_nanodollars:reserve,invoice_actual_cost_nanodollars:null,raw_sha256:await sha(answer.png)});
-    await env.ARTIFACTS.put(rawKey,answer.png,{httpMetadata:{contentType:'image/png'}});
-    await putJSON(env,receiptKey,{raw_key:rawKey,raw_sha256:await sha(answer.png),usage:answer.usage,request_id:answer.requestId,cost});
+    await processing.journal('provider-returned','provider_returned',{finished_at:new Date().toISOString(),elapsed_ms:Date.now()-started,request_id:answer.requestId,requested_model:frozen.model,actual_model:answer.model||null,usage:answer.usage,usage_calculated_cost_nanodollars:cost,reservation_nanodollars:reserve,invoice_actual_cost_nanodollars:null,raw_sha256:await sha(answer.png)});
+    await processing.stage('raw_r2_write',()=>env.ARTIFACTS.put(rawKey,answer.png,{httpMetadata:{contentType:'image/png'}}),{input_bytes:answer.png.length});
+    const receipt={raw_key:rawKey,raw_sha256:await sha(answer.png),usage:answer.usage,request_id:answer.requestId,cost};
+    await processing.stage('receipt_r2_write',()=>putJSON(env,receiptKey,receipt));
+    await processing.stage('receipt_d1_status',async()=>{
     await query(env,"UPDATE attempts SET status='received',receipt_key=? WHERE job_id=?",receiptKey,job.id).run();
     // The provider receipt is durable: settle known usage before a separate CPU-heavy finalization job.
     if(cost!==null){await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=? WHERE job_id=?",cost,cost,job.id).run();}
-    await queueDiagnostic(env,jobId,'recovery_queued');await env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id});
+    });
+    await sendFinalization(env,job,processing);
   }catch(error){
-    try{await queueDiagnostic(env,jobId,'needs_review',{error:error.message});}catch{}
-    try{await journalEvent(env,job.id,'processing-failed',invoked?'provider_or_storage_failed':'provider_not_sent',{at:new Date().toISOString(),elapsed_ms:Date.now()-started,error:String(error.message).split(env.OPENAI_API_KEY||'__NO_KEY__').join('[redacted]').slice(0,500),outcome:invoked?'unknown-or-durable-receipt':'not-sent'});}catch{}
-    await env.DB.batch([query(env,"UPDATE attempts SET status='unknown',error=? WHERE job_id=?",String(error.message).slice(0,500),job.id),query(env,"UPDATE jobs SET status='needs_review' WHERE id=?",job.id)]);
+    const safe=safeProcessingError(error,processing.failedStage);
+    await processing.event('processing_failed','failed',{error});
+    await processing.journal('processing-failed',invoked?'provider_or_storage_failed':'provider_not_sent',{at:new Date().toISOString(),elapsed_ms:Date.now()-started,error:safe.message,error_code:safe.code,outcome:invoked?'unknown-or-durable-receipt':'not-sent'});
+    // A finalization/queue failure must not erase already settled billing or the claim guard.
+    await processing.stage('failure_d1_status',()=>env.DB.batch([
+      query(env,"UPDATE attempts SET status=CASE WHEN actual IS NULL THEN 'unknown' ELSE status END,error=? WHERE job_id=?",safe.message,job.id),
+      query(env,"UPDATE jobs SET status='needs_review' WHERE id=? AND status<>'complete'",job.id)
+    ]));
+    await processing.end('needs_review',error);
   }
 }
 async function saveCandidates(env,b,auth){const access=await jobAccess(env,auth,b.jobId);const run=await one(env,'SELECT principal_id FROM runs WHERE id=?',access.run_id);if(auth.role!=='owner'&&run.principal_id!==auth.principalId)fail(403,'Only study creator can freeze candidates');if(!safeId(b.jobId))fail(400,'Invalid job');const job=await one(env,"SELECT id FROM jobs WHERE id=? AND status='complete'",b.jobId);if(!job)fail(409,'Completed job required');if(!Array.isArray(b.alternatives)||b.alternatives.length!==3||new Set(b.alternatives.map(a=>a.id)).size!==3||b.alternatives.some(a=>!safeId(a.id)||!a.config))fail(400,'Three distinct configurations required');const payload=JSON.stringify(b.alternatives),hash=await sha(payload);await query(env,'INSERT OR IGNORE INTO candidates VALUES (?,?,?)',b.jobId,payload,hash).run();const saved=await one(env,'SELECT * FROM candidates WHERE job_id=?',b.jobId);if(saved.payload_sha!==hash)fail(409,'Candidates immutable');return {saved:true};}
@@ -164,7 +198,15 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/choices')return json(await saveChoice(env,body,auth));
           if(url.pathname==='/api/recover'){ownerOnly(auth);
             if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
-            const receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`;if(!await env.ARTIFACTS.head(receiptKey))fail(409,'No durable receipt; billing reconciliation required, no automatic resend');await queueDiagnostic(env,job.id,'recovery_queued');await env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id});return json({recovery_queued:true,provider_calls:0},202);
+            const receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`;if(!await env.ARTIFACTS.head(receiptKey))fail(409,'No durable receipt; billing reconciliation required, no automatic resend');
+            const processing=createProcessing(env,job,{kind:'recovery-request'});
+            try{await sendFinalization(env,job,processing);}
+            catch(error){
+              try{await processing.stage('failure_d1_status',()=>query(env,"UPDATE jobs SET status='needs_review' WHERE id=? AND status<>'complete'",job.id).run());await processing.end('recovery_send_failed',error);}
+              catch(statusError){await processing.end('status_write_failed',statusError);}
+              throw error;
+            }
+            return json({recovery_queued:true,provider_calls:0},202);
           }
         }
         fail(404,'Unknown API route');
@@ -173,7 +215,53 @@ export function createWorker(deps={}){return {
       const asset=await env.ASSETS.fetch(request),headers=new Headers(asset.headers);headers.set('Cache-Control','private, no-store');headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','no-referrer');headers.set('Content-Security-Policy',"default-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");return new Response(asset.body,{status:asset.status,headers});
     }catch(error){const diagnostic=crypto.randomUUID();if(!error.status){const table=/no such table: ([a-zA-Z0-9_]+)/.exec(String(error.message));console.error(JSON.stringify({event:'api-failed',diagnostic,route:url.pathname,kind:table?'missing-database-table':'storage-or-configuration',...(table?{table:table[1]}:{})}));return json({error:table?'Database migration missing: '+table[1]+'; no automatic provider retry.':'Storage or configuration failure; no automatic provider retry.',route:url.pathname,diagnostic},503);}return json({error:error.message,route:url.pathname},error.status);} 
   },
-  async queue(batch,env){for(const message of batch.messages){try{env=await referenceEnvironment(env);if(message.body?.version===1&&safeId(message.body.jobId)){if(message.body.kind==='image-recovery'){const job=await one(env,'SELECT * FROM jobs WHERE id=?',message.body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',message.body.jobId);if(job&&attempt&&job.status!=='complete'){const key='runs/'+job.run_id+'/'+job.object_id+'/receipt.json';if(!await env.ARTIFACTS.head(key))throw Error('No durable receipt; no provider resend');await queueDiagnostic(env,job.id,'saving_result');await finishReceipt(env,job,{...attempt,receipt_key:key});await queueDiagnostic(env,job.id,'complete');}}else if(message.body.kind==='planner')await processPlan(env,message.body.jobId,deps.textProvider);else await processJob(env,message.body.jobId,deps);}message.ack();}catch(error){const jobId=message.body?.jobId;if(safeId(jobId)){const diagnostic=crypto.randomUUID(),detail=String(error.message||error).split(env.OPENAI_API_KEY||'__NO_KEY__').join('[redacted]').slice(0,500);console.error(JSON.stringify({event:'queue-processing-failed',diagnostic,job_id:jobId,kind:message.body.kind||'image',error:detail}));try{await queueDiagnostic(env,jobId,message.body.kind==='image-recovery'?'recovery_failed':'failed_before_provider',{error:detail,diagnostic});if(message.body.kind==='planner'){await query(env,"UPDATE planner_requests SET status='failed' WHERE id=? AND status='queued' AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",jobId,jobId).run();}else{await query(env,"UPDATE jobs SET status='failed' WHERE id=? AND status='queued' AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",jobId,jobId).run();}}catch(storageError){console.error(JSON.stringify({event:'queue-failure-status-write-failed',diagnostic,job_id:jobId}));}}message.ack();}}}
+  async queue(batch,env){
+    for(const message of batch.messages){
+      let processing=null,job=null;
+      try{
+        env=await referenceEnvironment(env);
+        if(message.body?.version===1&&safeId(message.body.jobId)){
+          if(message.body.kind==='planner')await processPlan(env,message.body.jobId,deps.textProvider);
+          else{
+            job=await one(env,'SELECT * FROM jobs WHERE id=?',message.body.jobId);
+            if(job){
+              processing=createProcessing(env,job,{kind:message.body.kind||'image'});
+              if(message.body.kind==='image-recovery'){
+                await processing.event('finalization_receive','succeeded',{parent_execution_id:message.body.parentExecutionId});
+                const attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',job.id);
+                if(attempt&&job.status!=='complete'){
+                  const key='runs/'+job.run_id+'/'+job.object_id+'/receipt.json';
+                  await query(env,"UPDATE jobs SET status='running' WHERE id=? AND status<>'complete'",job.id).run();
+                  await finishReceipt(env,job,{...attempt,receipt_key:key},processing,deps);
+                  await processing.end('complete');
+                }else await processing.event('recovery_skipped','succeeded',{},'skipped');
+              }else await processJob(env,message.body.jobId,{...deps,processing});
+            }
+          }
+        }
+      }catch(error){
+        const jobId=message.body?.jobId;
+        if(safeId(jobId)){
+          const safe=safeProcessingError(error,processing?.failedStage);
+          console.error(JSON.stringify({event:'queue-processing-failed',job_id:jobId,execution_id:processing?.executionId||null,...safe}));
+          try{
+            if(message.body.kind==='planner'){
+              await query(env,"UPDATE planner_requests SET status='failed' WHERE id=? AND status='queued' AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",jobId,jobId).run();
+            }else{
+              processing ||= createProcessing(env,job||{id:jobId,run_id:null},{kind:'image'});
+              await processing.stage('failure_d1_status',()=>query(env,"UPDATE jobs SET status=CASE WHEN EXISTS (SELECT 1 FROM attempts WHERE job_id=?) THEN 'needs_review' ELSE 'failed' END WHERE id=? AND status<>'complete'",jobId,jobId).run());
+              await processing.end('needs_review',error);
+            }
+          }catch{
+            console.error(JSON.stringify({event:'queue-failure-status-write-failed',job_id:jobId,execution_id:processing?.executionId||null,code:'STATUS_WRITE_FAILED'}));
+            if(processing)await processing.end('status_write_failed',error);
+          }
+        }
+      }
+      // Never resend a possibly paid request, including when status/telemetry storage failed.
+      message.ack();
+    }
+  }
 };}
 export default createWorker();
 
