@@ -27,7 +27,7 @@ await check('mode and prompt contracts preserve approved art direction',async()=
  assert.equal(generationContract('C4').background,'opaque');assert.equal(generationContract('C1','whole_card').background,'opaque');
  assert.throws(()=>generationContract('C4','modular'));
  const prompt=compileObjectPrompt({art_direction:'Approved art',generalized_rules:'Approved rules'},'Bucket',generationContract('C2'));
- assert(prompt.startsWith('Approved art\n\nApproved rules'));assert.match(prompt,/Do NOT generate/);assert.match(prompt,/rings, halo/);
+ assert(prompt.startsWith('Approved art\n\nApproved rules'));assert.match(prompt,/standing directly on a simple horizontal surface/);assert.match(prompt,/rings, halo/);
 });
 await check('adapter preserves model, size, quality, references and sends the requested background',async()=>{
  for(const background of ['transparent','opaque']){
