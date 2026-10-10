@@ -59,6 +59,7 @@ async function createRun(env,body,auth){
   if(!Array.isArray(objects)||!objects.length||objects.length>20||new Set(objects.map(o=>o.object_id)).size!==objects.length||objects.some(o=>!safeId(o.object_id)||o.object_id.length>60||typeof o.brief!=='string'||!o.brief.trim()||o.brief.length>12000))fail(400,'Provide 1-20 distinct IDs and briefs');
   let manifest=null;if(mode==='live'){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)fail(403,'Live generation disabled');
+    if(objects.some(o=>!['C1','C2','C3','C4'].includes(o.category)||o.generation_mode!=='whole_card'))fail(409,'Эта коллекция должна генерироваться целиком. Обновите страницу перед новым запуском; модульная генерация отключена.');
     if(body.approval!=='I approve one paid attempt per object')fail(400,'Explicit per-run paid approval required');
     const budget=await one(env,'SELECT * FROM budget WHERE id=1');if(!budget?.approved)fail(409,'Approved budget baseline required');const state=await budgetState(env);if(state.live_blockers.length)fail(409,state.live_blockers.join(', '));reservationFor(env,'image',auth.principalId);manifest=(await references(env,{manifestOnly:true})).manifest;
   }
@@ -161,6 +162,10 @@ export async function processJob(env,jobId,deps={}){
   const previous=await one(env,'SELECT * FROM attempts WHERE job_id=?',jobId);if(previous){await processing.event('replay_prevented','succeeded',{},'skipped');return;} // all ambiguous attempts are permanently non-replayable
   const run=await one(env,'SELECT * FROM runs WHERE id=?',job.run_id),frozenObject=await env.ARTIFACTS.get(run.frozen_key);if(!frozenObject)throw Error('Missing frozen run');const text=await frozenObject.text();if(await sha(text)!==run.frozen_sha)throw Error('Frozen SHA mismatch');const frozen=JSON.parse(text),object=frozen.objects.find(o=>o.object_id===job.object_id);if(!object)throw Error('Missing frozen object');
   await processing.event('checking_frozen_input','succeeded');
+  if(run.mode==='live'&&object.generation?.mode!=='whole_card'){
+    await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();
+    await processing.end('whole_card_required');return;
+  }
   let sheets=[];if(run.mode==='live'){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live disabled before claim');
     if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');sheets=(await references(env)).sheets;await processing.event('references_checked','succeeded');
