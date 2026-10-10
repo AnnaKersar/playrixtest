@@ -43,11 +43,12 @@ await check('opaque final cards and separate unmodified transparent source, all 
  const jobs=(await data('/api/run?run='+run.runId)).jobs;assert.equal(jobs.filter(j=>j.status==='complete').length,4);
  for(const j of jobs){
  const m=await data('/api/asset?job='+j.id+'&kind=manifest'),final=await decodePNG(bucket.map.get(m.final_key));
- assert.equal(final.width,860);assert.equal(final.height,960);for(let i=3;i<final.rgba.length;i+=4)assert.equal(final.rgba[i],255);
+ assert.equal(final.width,864);assert.equal(final.height,960);for(let i=3;i<final.rgba.length;i+=4)assert.equal(final.rgba[i],255);
  if(m.generation.mode==='modular'){
  const source=await decodePNG(bucket.map.get(m.foreground_key));assert.equal(source.rgba[3],0);
- assert.equal(source.rgba[(Math.round(960*.43)*860+Math.round(860*.58))*4+3],0);
- for(let i=0;i<source.rgba.length;i+=4)if(source.rgba[i+3]===255)assert.deepEqual(final.rgba.slice(i,i+3),source.rgba.slice(i,i+3));
+ assert.equal(source.rgba[(Math.round(960*.43)*864+Math.round(864*.58))*4+3],0);
+ const fit=m.composition.objectAssembly;let protectedSamples=0;
+ for(let y=2;y<source.height-2;y+=7)for(let x=2;x<source.width-2;x+=7){const p=(y*source.width+x)*4,color=source.rgba.slice(p,p+3);let uniform=true;for(let yy=y-2;yy<=y+2;yy++)for(let xx=x-2;xx<=x+2;xx++){const n=(yy*source.width+xx)*4;if(source.rgba[n+3]!==255||color.some((v,k)=>v!==source.rgba[n+k]))uniform=false;}if(!uniform)continue;const tx=Math.floor((x+.5)*fit.scale+fit.dx),ty=Math.floor((y+.5)*fit.scale+fit.dy);if(tx<0||ty<0||tx>=final.width||ty>=final.height)continue;const q=(ty*final.width+tx)*4;assert.deepEqual(final.rgba.slice(q,q+3),color);protectedSamples++;}assert(protectedSamples>0,'No solid subject samples verified after assembly transform');
  assert.equal(m.foreground_sha256,await sha(bucket.map.get(m.foreground_key)));
  assert.equal((await data('/api/image-info?job='+j.id)).has_foreground,true);
  }else assert.equal(m.foreground_key,null);
@@ -66,4 +67,3 @@ await check('reject false matte, no mask or white replacement, allow C3 surface 
  assert.notDeepEqual(card.rgba.slice(0,3),new Uint8Array([255,255,255]));assert.deepEqual(card.rgba.slice(8,11),source.rgba.slice(8,11));
 });
 console.log('No live provider requests.');
-
