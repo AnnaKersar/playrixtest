@@ -3,11 +3,12 @@ import {generationContract,generationInstructions} from '../cloudflare/generatio
 import {proceduralCard} from '../cloudflare/procedural-card.mjs';
 import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
 import {artDirectionRule,ART_DIRECTION_RULE_VERSION} from '../cloudflare/art-direction-policy.mjs';
-for(const category of ['C1','C2','C3','C4']){const prompt=compileObjectPrompt({art_direction:'Approved camera and proportions',generalized_rules:'Pinned rules'},'Explicit soil contents',generationContract(category));assert(prompt.startsWith('Approved camera and proportions\n\nPinned rules'));assert(prompt.includes(artDirectionRule),'Global clean-materials rule missing in '+category);assert.match(prompt,/scuffs, scratches/);assert.match(prompt,/Explicitly requested contents such as soil remain recognizable/);}assert.equal(ART_DIRECTION_RULE_VERSION,'art-direction/clean-materials-v1');
+for(const category of ['C1','C2','C3','C4']){const prompt=compileObjectPrompt({art_direction:'Approved camera and proportions',generalized_rules:'Pinned rules'},'Explicit soil contents',generationContract(category));assert(prompt.startsWith('Approved camera and proportions\n\nPinned rules'));assert(prompt.includes(artDirectionRule),'Global clean-materials rule missing in '+category);assert.match(prompt,/scuffs, scratches/);assert.match(prompt,/Explicitly requested contents such as soil remain recognizable/);}assert.equal(ART_DIRECTION_RULE_VERSION,'art-direction/clean-materials-v2-reference-color-shadow');
 const contract=generationContract('C2');assert.equal(contract.background,'transparent');assert.equal(contract.shadow_mode,'generated-alpha');
 for(const category of ['C1','C3','C4'])assert.equal(generationContract(category).shadow_mode,undefined);
 assert.equal(generationContract('C2','whole_card').shadow_mode,undefined);
 const prompt=generationInstructions(contract);assert.match(prompt,/genuine partial alpha/);assert.match(prompt,/bottom 30%/);assert.match(prompt,/adds no second shadow/);assert.match(prompt,/Do NOT generate a floor/);
+assert.doesNotMatch(prompt,/shadow as neutral dark pixels/);assert.match(prompt,/chromatically tinted shadow/);assert.match(artDirectionRule,/rich saturated local color/);assert.match(artDirectionRule,/near contour defined/);assert.match(artDirectionRule,/Harmonize the shadow hue/);assert.match(artDirectionRule,/White, gray and metallic materials retain/);
 const width=1000,height=1000,rgba=new Uint8Array(width*height*4);
 for(let y=200;y<880;y++)for(let x=250;x<750;x++)rgba.set([20,90,230,255],(y*width+x)*4);
 for(let y=880;y<970;y++)for(let x=40;x<500;x++)rgba.set([0,0,0,80],(y*width+x)*4);
