@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import {collectionBrief,collectionSettings,plannedCollection,imagePayload} from '../cloudflare/visitor-public/generator-model.mjs';
+import {cardTypeMix,collectionBrief,collectionSettings,plannedCollection,imagePayload} from '../cloudflare/visitor-public/generator-model.mjs';
 import {generationContract,generationInstructions} from '../cloudflare/generation-contract.mjs';
 const object=i=>({object_id:'object_'+i,main_identity:'Film prop '+i,production_category:'C2',asset_stage:'foreground_only',object_brief:'One clean illustrated film prop',contents:[],decoration:[]});
-const group=(name,count,offset=0)=>({name,coherence_rationale:'Film genre',objects:Array.from({length:count},(_,i)=>object(i+offset))});
+const group=(name,count,offset=0)=>({name,coherence_rationale:'Film genre',objects:Object.entries(cardTypeMix(count)).flatMap(([type,n])=>Array.from({length:n},()=>type)).map((type,i)=>({...object(i+offset),production_category:type,asset_stage:type==='C3'?'object_with_surface':type==='C4'?'whole_card':'foreground_only'}))});
 const base=collectionBrief('Films','');
 assert.equal(base.collection_settings.category_count,1);assert.equal(base.card_count,10);
 assert.match(base.constraints,/Films -> category dimension film genres/);
@@ -26,3 +26,7 @@ for(const category of ['C1','C2','C3','C4']){
 const seen=new Set();for(let i=0;i<30;i++)seen.add(generationContract('C2','whole_card','test|'+i).surface_finish);assert.equal(seen.size,2);
 console.log('PASS default 1×10, inferred genre hierarchy, optional category names/themes/counts, whole-card payloads, reject mismatched plans before image calls, opaque C1-C4 prompts and seeded finishes; paid calls 0');
 
+
+assert.deepEqual(cardTypeMix(10),{C1:4,C2:3,C3:2,C4:1});
+const allOne=group('Comedy',10);allOne.objects.forEach(o=>o.production_category='C1');assert.throws(()=>plannedCollection(base,{collections:[allOne]}),/распределение/);
+assert.deepEqual(payload.category_names,['Comedy']);assert.equal(payload.objects[0].thematic_category,'Comedy');

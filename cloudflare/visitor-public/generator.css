@@ -16,3 +16,5 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 .collection-advanced button{width:100%;padding:10px;border-radius:10px;background:#f4c563;color:#593712;border:1px solid #b88b42;font-weight:700;cursor:pointer}
 .collection-advanced .advanced-hint{color:#755639}
 #advanced-total{font-weight:700}
+
+.generator-sidebar{overflow-y:auto}.collection-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;min-width:0}.collection-heading h2{flex:0 1 auto}#collection-category{margin:0;font-size:13px;font-weight:700;color:#7b54b2;overflow-wrap:anywhere}#automatic-comparison{flex-shrink:0;min-height:230px}
