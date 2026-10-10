@@ -20,7 +20,7 @@ export function subjectLighting(rgba,width,height,override='auto'){
  const name=(vector[1]<0?'upper':'lower')+'-'+(vector[0]<0?'left':vector[0]>0?'right':'center'),shadowVector=vector.map(v=>-v);
  return {version:'subject-light-shadow/v2',override,method,lightDirection:name,lightVector:vector,shadowDirection:(shadowVector[1]<0?'upper':'lower')+'-'+(shadowVector[0]<0?'left':shadowVector[0]>0?'right':'center'),shadowVector,confidence,ambiguous,scope:'surface-only'};
 }
-export function shadowProjection(width,height,lighting){const foot=height*C2_SURFACE_POLICY.objectBottomFraction;return {foot,baseY:foot-height*.025*lighting.shadowVector[1],centerX:width*.5,compression:.10*lighting.shadowVector[1],shear:.12*lighting.shadowVector[0],spread:.92};}
+export function shadowProjection(width,height,lighting,geometry={}){const foot=geometry.foot??height*C2_SURFACE_POLICY.objectBottomFraction,centerX=geometry.contactX??width*.5,depth=Math.max(1,geometry.depth??height*.70),sx=lighting.shadowVector[0],sy=lighting.shadowVector[1];return {foot,baseY:foot-height*.002*sy,centerX,compression:((sy>0?height*.98:surfaceHorizon(height)+height*.02)-foot)/depth,shear:((sx<0?width*.04:sx>0?width*.96:centerX)-centerX)/depth,spread:1};}
 export function projectShadowPoint(x,y,p){return [p.centerX+p.spread*(x-p.centerX)+p.shear*(p.foot-y),p.baseY+p.compression*(p.foot-y)];}
 export function unprojectShadowPoint(x,y,p){const sourceY=p.foot-(y-p.baseY)/p.compression;return [p.centerX+(x-p.centerX-p.shear*(p.foot-sourceY))/p.spread,sourceY];}
 export function surfacePalette(selection,sampleRGB){
@@ -33,19 +33,23 @@ export function surfacePalette(selection,sampleRGB){
 
 // Copy the subject alpha, flatten and shear it onto the plane. Soften only the shadow.
 export function projectedSubjectShadow(rgba,width,height,layout={scale:1,dx:0,dy:0},lighting=subjectLighting(rgba,width,height)){
- const {scale,dx,dy}=layout,projection=shadowProjection(width,height,lighting);
- let sourceTop=height;outer:for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]>30){sourceTop=y;break outer;}const castDepth=Math.max(1,(projection.foot-(sourceTop*scale+dy))*Math.abs(projection.compression));
+ const {scale,dx,dy}=layout;let sourceTop=height,sourceBottom=-1;
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]>30){sourceTop=Math.min(sourceTop,y);sourceBottom=Math.max(sourceBottom,y);}
+ if(sourceBottom<0)return new Float32Array(width*height);
+ let contactSum=0,contactWeight=0;for(let y=Math.max(0,sourceBottom-Math.max(1,Math.round((sourceBottom-sourceTop)*.015)));y<=sourceBottom;y++)for(let x=0;x<width;x++){const a=rgba[(y*width+x)*4+3]/255;if(a>.12){contactSum+=(x+.5)*a;contactWeight+=a;}}
+ const projection=shadowProjection(width,height,lighting,{foot:(sourceBottom+1)*scale+dy,contactX:(contactWeight?contactSum/contactWeight:width*.5)*scale+dx,depth:Math.max(1,(sourceBottom+1-sourceTop)*scale)}),castDepth=Math.max(1,(projection.foot-(sourceTop*scale+dy))*Math.abs(projection.compression));
  const alpha=new Float32Array(width*height),out=new Float32Array(alpha.length),horizon=surfaceHorizon(height);
  for(let y=horizon;y<height;y++)for(let x=0;x<width;x++){
   const [subjectX,subjectY]=unprojectShadowPoint(x+.5,y+.5,projection);if(subjectY>projection.foot)continue;
   const u=(subjectX-dx)/scale-.5,v=(subjectY-dy)/scale-.5,ix=Math.floor(u),iy=Math.floor(v),fx=u-ix,fy=v-iy;let a=0;
   for(let oy=0;oy<2;oy++)for(let ox=0;ox<2;ox++){const xx=ix+ox,yy=iy+oy;if(xx>=0&&xx<width&&yy>=0&&yy<height)a+=rgba[(yy*width+xx)*4+3]/255*(ox?fx:1-fx)*(oy?fy:1-fy);}
-  const distance=Math.min(1,Math.abs(y-projection.baseY)/castDepth),fade=1-distance*distance*(3-2*distance);
-  alpha[y*width+x]=a*.30*fade;
+  const distance=Math.min(1,Math.abs(y-projection.baseY)/castDepth),tip=Math.max(0,(distance-.92)/.08),fade=(1-.65*distance)*(1-tip*tip*(3-2*tip));
+  alpha[y*width+x]=a*.36*fade;
  }
  // Small separable kernel belongs to the shadow layer, never to the object layer.
  const radius=Math.max(1,Math.round(width*.003)),weights=Array.from({length:radius*2+1},(_,i)=>Math.exp(-2*((i-radius)/radius)**2)),sum=weights.reduce((a,b)=>a+b,0),temp=new Float32Array(alpha.length);
  for(let y=horizon;y<height;y++)for(let x=0;x<width;x++){let a=0;for(let k=-radius;k<=radius;k++){const xx=x+k;if(xx>=0&&xx<width)a+=alpha[y*width+xx]*weights[k+radius];}temp[y*width+x]=a/sum;}
- for(let y=horizon;y<height;y++)for(let x=0;x<width;x++){let a=0;for(let k=-radius;k<=radius;k++){const yy=y+k;if(yy>=horizon&&yy<height)a+=temp[yy*width+x]*weights[k+radius];}out[y*width+x]=a/sum;}
+ for(let y=horizon;y<height;y++)for(let x=0;x<width;x++){let a=0;for(let k=-radius;k<=radius;k++){const yy=y+k;if(yy>=horizon&&yy<height)a+=temp[yy*width+x]*weights[k+radius];}const distance=Math.min(1,Math.abs(y-projection.baseY)/castDepth),soften=Math.max(0,(distance-.70)/.30);out[y*width+x]=alpha[y*width+x]*(1-soften)+a/sum*soften;}
+ out.projection=projection;
  return out;
 }
