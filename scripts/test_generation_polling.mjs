@@ -13,7 +13,7 @@ now+=10000;a.events.storage({key:'card-studio-generation-progress/v1'});await Pr
 assert.equal(writes.get(key)||0,0);
 console.log('PASS shared 10-second gate across tabs, no progress-triggered polling, unchanged progress/state not saved repeatedly, GET only; paid sends 0');
 store.set(key,JSON.stringify({pending:{plannerKey:'q',runKey:'rq',planId:'planner_q',expectedPlanId:'planner_q',expectedRunId:'run_q',name:'Music',wishes:'',startedAt:0,paused:true}}));
-const c=tab();await Promise.resolve();await Promise.resolve();let planGets=0,runPosts=0;
+const c=tab();await new Promise(resolve=>setImmediate(resolve));let planGets=0,runPosts=0;
 c.context.plannedCollection=()=>({approved:true});c.context.imagePayload=()=>({objects:[]});c.context.imageProgress=()=> 'Images queued';
 c.context.fetch=async(url,options)=>{
  if(url.startsWith('/api/planner?')){planGets++;return new Response(JSON.stringify({status:'complete',result:{plan:{collections:[{name:'Jazz',objects:[]}]}}}));}
