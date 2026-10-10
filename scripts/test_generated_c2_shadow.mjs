@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import {generationContract,generationInstructions} from '../cloudflare/generation-contract.mjs';
 import {proceduralCard} from '../cloudflare/procedural-card.mjs';
+import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
+import {artDirectionRule,ART_DIRECTION_RULE_VERSION} from '../cloudflare/art-direction-policy.mjs';
+for(const category of ['C1','C2','C3','C4']){const prompt=compileObjectPrompt({art_direction:'Approved camera and proportions',generalized_rules:'Pinned rules'},'Explicit soil contents',generationContract(category));assert(prompt.startsWith('Approved camera and proportions\n\nPinned rules'));assert(prompt.includes(artDirectionRule),'Global clean-materials rule missing in '+category);assert.match(prompt,/scuffs, scratches/);assert.match(prompt,/Explicitly requested contents such as soil remain recognizable/);}assert.equal(ART_DIRECTION_RULE_VERSION,'art-direction/clean-materials-v1');
 const contract=generationContract('C2');assert.equal(contract.background,'transparent');assert.equal(contract.shadow_mode,'generated-alpha');
 for(const category of ['C1','C3','C4'])assert.equal(generationContract(category).shadow_mode,undefined);
 assert.equal(generationContract('C2','whole_card').shadow_mode,undefined);
