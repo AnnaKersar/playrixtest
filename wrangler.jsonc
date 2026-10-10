@@ -47,9 +47,6 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "limits": {
-    "cpu_ms": 120000
-  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
