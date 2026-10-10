@@ -20,14 +20,14 @@ function renderCategorySettings(){
   for(const [key,label,placeholder,type]of [['name','Название категории','Система придумает','text'],['theme','Тема этой категории','По общей теме категорий','text'],['card_count','Карточек в категории','10','number']]){
    const id='category-'+i+'-'+key,l=node('label',label),input=node('input');l.htmlFor=id;input.id=id;input.type=type;input.value=row[key]||'';input.placeholder=placeholder;
    if(type==='number'){input.min=1;input.max=20;}else input.maxLength=300;
-   input.oninput=()=>{saved.advanced.categories[i][key]=input.value;advancedChanged();};box.append(l,input);
+   input.oninput=()=>{(saved.advanced.categories[i]||={})[key]=input.value;advancedChanged();};box.append(l,input);
   }return box;
  }));updateAdvancedTotal();
 }
 $('category-count').oninput=()=>{saved.advanced.category_count=$('category-count').value;renderCategorySettings();advancedChanged();};
 $('category-theme').oninput=()=>{saved.advanced.category_theme=$('category-theme').value;advancedChanged();};
 $('add-category').onclick=()=>{saved.advanced.category_count=Math.min(20,(Number(saved.advanced.category_count)||1)+1);$('category-count').value=saved.advanced.category_count;renderCategorySettings();advancedChanged();};
-renderCategorySettings();
+renderCategorySettings();persist();
 
 for(const id of ['collection-name','producer-wishes'])$(id).oninput=()=>{saved.name=$('collection-name').value;saved.wishes=$('producer-wishes').value;persist();};
 function placeholder(index,job){const b=node('button');b.type='button';b.className='collection-card placeholder';b.disabled=true;b.append(node('span',String(index+1)),node('span',job?.object_id||'Карточка'));b.firstChild.className='slot-number';b.lastChild.className='card-label';return b;}
