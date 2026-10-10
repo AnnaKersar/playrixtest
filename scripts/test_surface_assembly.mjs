@@ -20,7 +20,7 @@ async function call(path,body,options={}){return worker.fetch(new Request('https
 async function data(path,body){const r=await call(path,body);const d=await r.json();assert(r.ok,JSON.stringify(d));return d;}
 
 import {proceduralCard,COMPOSITION_VERSION} from '../cloudflare/procedural-card.mjs';
-import {C2_SURFACE_POLICY,surfaceHorizon} from '../cloudflare/visitor-public/studio/surface-policy.mjs';
+import {C2_SURFACE_POLICY,surfaceHorizon,projectedSubjectShadow,surfacePalette,subjectLighting,shadowProjection,projectShadowPoint,unprojectShadowPoint} from '../cloudflare/visitor-public/studio/surface-policy.mjs';
 const heights=C2_SURFACE_POLICY.references.map(r=>(480-r.horizon)/480).sort((a,b)=>a-b);
 assert.equal(heights[Math.floor(heights.length/2)],C2_SURFACE_POLICY.medianHeightFraction);
 const image=await decodePNG(await mockPNG(864,960)),unchanged=image.rgba.slice(),withShadow=proceduralCard(image,'C2'),withoutShadow=proceduralCard(image,'C2',{shadow:false});
@@ -28,6 +28,11 @@ assert.deepEqual(image.rgba,unchanged);assert.equal(withShadow.composition.surfa
 assert.equal(withShadow.composition.surface.horizon,672);let changedBelow=0;
 for(let y=0;y<960;y++)for(let x=0;x<864;x++){const p=(y*864+x)*4;assert.equal(withShadow.rgba[p+3],255);const changed=withShadow.rgba[p]!==withoutShadow.rgba[p]||withShadow.rgba[p+1]!==withoutShadow.rgba[p+1]||withShadow.rgba[p+2]!==withoutShadow.rgba[p+2];if(y<surfaceHorizon(960))assert.equal(changed,false,'Shadow on background');else changedBelow+=changed;}
 assert(changedBelow>0,'No surface shadow');
+const silhouette=new Uint8Array(100*100*4);for(let y=15;y<88;y++)for(let x=30;x<70;x++)silhouette[(y*100+x)*4+3]=255;const solidShadow=projectedSubjectShadow(silhouette,100,100,{scale:1,dx:0,dy:0},subjectLighting(silhouette,100,100,'upper-left'));for(let y=25;y<60;y++)for(let x=40;x<60;x++)silhouette[(y*100+x)*4+3]=0;const hollowShadow=projectedSubjectShadow(silhouette,100,100,{scale:1,dx:0,dy:0},subjectLighting(silhouette,100,100,'upper-left'));assert(solidShadow.some((v,i)=>v>hollowShadow[i]+.005),'Shadow ignores subject holes');assert.deepEqual(projectedSubjectShadow(new Uint8Array(silhouette.length),100,100),new Float32Array(10000));
+const existingPalette={h:44,s:.95,v:.98,shift:8};assert.equal(surfacePalette(existingPalette,[255,180,10]),existingPalette);for(const selection of ['gold',null,undefined,{h:'gold'}]){const palette=surfacePalette(selection,[255,180,10]);assert(['h','s','v','shift'].every(k=>Number.isFinite(palette[k])));}const manual=subjectLighting(silhouette,100,100,'upper-left');assert.equal(manual.lightDirection,'upper-left');assert.equal(manual.shadowDirection,'lower-right');const projection=shadowProjection(100,100,manual),forward=projectShadowPoint(50,15,projection);assert(forward[0]>50&&forward[1]>projection.baseY);const inverse=unprojectShadowPoint(...forward,projection);assert(Math.abs(inverse[0]-50)<1e-8&&Math.abs(inverse[1]-15)<1e-8);let shadowWeight=0,shadowX=0;for(let y=0;y<100;y++)for(let x=0;x<100;x++){const a=solidShadow[y*100+x];shadowWeight+=a;shadowX+=a*x;}assert(shadowX/shadowWeight>50,'Shadow faces illuminated left side');
+
+for(let y=672;y<960;y+=10){const p=y*864*4,rgb=withoutShadow.rgba.slice(p,p+3),hi=Math.max(...rgb),lo=Math.min(...rgb);assert(hi/255>=.86);assert((hi-lo)/hi>=.8,'Surface washed out by white mixing');}
+
 const run=await data('/api/runs',{objects:[{object_id:'surface_fixture',category:'C2',brief:'Offline fixture'}]});
 while(messages.length){const body=messages.shift();await worker.queue({messages:[{body,ack(){}}]},env);}
 const j=(await data('/api/run?run='+run.runId)).jobs[0];assert.equal(j.status,'complete');
@@ -40,3 +45,9 @@ const current=await data('/api/asset?job='+j.id+'&kind=manifest');assert.notEqua
 assert.equal((await data('/api/reassemble',{jobId:j.id})).idempotent,true);assert.equal(providerCalls,0);
 const prior=await call('/api/asset?job='+j.id+'&kind=previous');assert(prior.ok);assert.equal(await sha(new Uint8Array(await prior.arrayBuffer())),previousHash);
 console.log('PASS reference median, 30% plane, automatic surface-only shadow, source preservation, owner-only rebuild, historical results retained, idempotency, zero provider calls');
+
+for(const direction of ['upper-left','upper-right','lower-left','lower-right']){const image=new Uint8Array(100*100*4),vx=direction.endsWith('left')?-1:1,vy=direction.startsWith('upper')?-1:1;for(let y=10;y<80;y++)for(let x=20;x<80;x++){const p=(y*100+x)*4,brightness=.50+.30*(vx*x/100+vy*y/100);image[p]=Math.round(20*brightness);image[p+1]=Math.round(100*brightness);image[p+2]=Math.round(255*brightness);image[p+3]=255;}const auto=subjectLighting(image,100,100);assert.equal(auto.lightDirection,direction);assert.deepEqual(auto.shadowVector,auto.lightVector.map(v=>-v));}
+const left=await data('/api/reassemble',{jobId:j.id,lightDirection:'upper-right'});assert.equal(left.composition.surface.shadow.lighting.shadowDirection,'lower-left');assert.equal(left.provider_calls,0);assert.equal((await data('/api/reassemble',{jobId:j.id,lightDirection:'upper-right'})).idempotent,true);const bad=await call('/api/reassemble',{jobId:j.id,lightDirection:'sideways'});assert.equal(bad.status,400);
+console.log('PASS editor palette object/string fallback, reversible forward/inverse projection, four inferred light sides, opposite shadow direction, manual override, contact-to-tip fade');
+
+const near=projectShadowPoint(50,70,projection),far=projectShadowPoint(50,20,projection);assert(solidShadow[Math.round(near[1])*100+Math.round(near[0])]>solidShadow[Math.round(far[1])*100+Math.round(far[0])]*1.5,'Shadow is not darker at contact');

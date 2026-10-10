@@ -110,17 +110,18 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
   ]));
   await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:savedFrozen.final});
 }
-export async function reassembleStored(env,jobId,auth){
- ownerOnly(auth);if(!safeId(jobId))fail(400,'Invalid job');await jobAccess(env,auth,jobId);
+export async function reassembleStored(env,jobId,auth,options={}){
+ ownerOnly(auth);const lightDirection=options.lightDirection||'auto';if(!['auto','upper-left','upper-right','lower-left','lower-right'].includes(lightDirection))fail(400,'Invalid light direction');if(!safeId(jobId))fail(400,'Invalid job');await jobAccess(env,auth,jobId);
  const job=await one(env,'SELECT * FROM jobs WHERE id=?',jobId),result=await one(env,'SELECT * FROM results WHERE job_id=?',jobId);
  if(job?.status!=='complete'||!result)fail(409,'Completed result required');
  const previous=await getJSON(env,result.manifest_key);
+ if(previous.generation?.category!=='C2'&&lightDirection!=='auto')fail(400,'Light override applies to C2 surface only');
  if(previous.generation?.mode!=='modular'||!previous.foreground_key)fail(409,'Stored transparent modular foreground required');
- if(previous.composition?.version===COMPOSITION_VERSION)return {assembled:true,provider_calls:0,idempotent:true,composition:previous.composition};
+ if(previous.composition?.version===COMPOSITION_VERSION&&(previous.composition?.surface?.shadow?.lighting?.override||'auto')===lightDirection)return {assembled:true,provider_calls:0,idempotent:true,composition:previous.composition};
  const object=await env.ARTIFACTS.get(previous.foreground_key);if(!object)fail(409,'Stored foreground missing');
  const bytes=new Uint8Array(await object.arrayBuffer());if(await sha(bytes)!==previous.foreground_sha256)fail(409,'Foreground SHA mismatch');
  const layer=await decodePNG(bytes);validateAlpha(layer,previous.generation);
- const card=proceduralCard(layer,previous.generation.category);validateAlpha(card,{mode:'whole_card'});
+ const card=proceduralCard(layer,previous.generation.category,{lightDirection});validateAlpha(card,{mode:'whole_card'});
  const final=await encodePNG(card.width,card.height,card.rgba),hash=await sha(final),prefix=`runs/${job.run_id}/${job.object_id}/assemblies/${hash}`;
  const manifest={...previous,final_key:prefix+'.png',final_sha256:hash,composition:card.composition,artistic_review:'unreviewed',assembly_cost_nanodollars:0,assembly_created_at:new Date().toISOString(),previous_assemblies:[...(previous.previous_assemblies||[]),{final_key:result.final_key,manifest_key:result.manifest_key,final_sha256:previous.final_sha256}]};
  await env.ARTIFACTS.put(manifest.final_key,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,prefix+'.json',manifest);
@@ -223,7 +224,7 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/asset'){const jobId=url.searchParams.get('job'),kind=url.searchParams.get('kind')||'final';if(!safeId(jobId)||!['raw','final','foreground','manifest','previous'].includes(kind))fail(400,'Invalid asset');await jobAccess(env,auth,jobId);if(!['final','foreground'].includes(kind))ownerOnly(auth);let row=await one(env,'SELECT * FROM results WHERE job_id=?',jobId);if(!row&&kind==='raw'){const job=await one(env,'SELECT run_id,object_id FROM jobs WHERE id=?',jobId),attempt=await one(env,'SELECT receipt_key FROM attempts WHERE job_id=?',jobId);if(job&&attempt?.receipt_key){const receipt=await getJSON(env,attempt.receipt_key),canonical='runs/'+job.run_id+'/'+job.object_id+'/raw.png';if(receipt.raw_key!==canonical)fail(409,'Raw receipt path mismatch');row={raw_key:canonical};}}if(!row)fail(404,'Asset not found');let assetKey=row[kind+'_key'];if(kind==='previous'){const manifest=await getJSON(env,row.manifest_key);assetKey=manifest.previous_assemblies?.at(-1)?.final_key;if(!assetKey)fail(404,'Previous assembly not found');}if(kind==='foreground'){const manifest=await getJSON(env,row.manifest_key);assetKey=manifest.foreground_key||row.final_key;}const object=await env.ARTIFACTS.get(assetKey);if(!object)fail(404,'Asset not found');return new Response(object.body,{headers:{'Content-Type':kind==='manifest'?'application/json':'image/png','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
         }else if(request.method==='POST'){
           const body=await bodyJSON(request);
-          if(url.pathname==='/api/reassemble')return json(await reassembleStored(env,body.jobId,auth));
+          if(url.pathname==='/api/reassemble')return json(await reassembleStored(env,body.jobId,auth,{lightDirection:body.lightDirection}));
           if(url.pathname==='/api/plan-live')return json(await createPlan(env,body,auth),202);
           if(url.pathname==='/api/planner-recover'){ownerOnly(auth);if(!safeId(body.requestId))fail(400,'Invalid planner ID');return json(await recoverPlan(env,body.requestId));}
           if(url.pathname==='/api/plan-mock'){generationRole(auth);return json(await planMock(body));}
