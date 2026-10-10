@@ -1,3 +1,4 @@
+import {crc32} from 'node:zlib';
 import {prepareSheets} from './reference-sheets.mjs';
 import {categoryVisualSchedule,validateCategoryInventory} from './visitor-public/collection-policy.mjs';
 import {createProcessing,processingHealth,safeProcessingError} from './processing-diagnostics.mjs';
@@ -94,7 +95,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
   let sourceQA=null,decodedSource=null;
   // Opaque native RGB output has no alpha or composition to decode.
   const nativeRGB=contract?.mode==='whole_card'&&directSize
-    ?await processing.stage('native_rgb_validation',()=>nativeOpaqueRGBPNG(bytes,directSize)):null;
+    ?await processing.stage('native_rgb_validation',()=>nativeOpaqueRGBPNG(bytes,directSize,crc32)):null;
   if(nativeRGB)sourceQA=nativeRGB;
   if(contract&&!nativeRGB){
     const source=await processing.stage('source_decoding_png',()=>decodePNG(bytes),{input_bytes:bytes.length},image=>({width:image.width,height:image.height,channels:image.channels}));
@@ -163,7 +164,7 @@ export async function saveEditorAssembly(env,b,auth){
  return {assembled:true,provider_calls:0,composition:c};
 }
 async function sendFinalization(env,job,processing){
-  await processing.stage('finalization_send',()=>env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id,parentExecutionId:processing.executionId}));
+  await processing.stage('finalization_send',()=>(env.FINAL_JOBS||env.IMAGE_JOBS).send({version:1,kind:'image-recovery',jobId:job.id,parentExecutionId:processing.executionId}));
   await processing.end('waiting_finalization');
 }
 export async function processJob(env,jobId,deps={}){

@@ -23,11 +23,22 @@
       {
         "binding": "IMAGE_JOBS",
         "queue": "playrixtest-image-jobs"
+      },
+      {
+        "binding": "FINAL_JOBS",
+        "queue": "playrixtest-finalization"
       }
     ],
     "consumers": [
       {
         "queue": "playrixtest-image-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 0,
+        "max_concurrency": 1
+      },
+      {
+        "queue": "playrixtest-finalization",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
         "max_retries": 0,

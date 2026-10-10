@@ -1,3 +1,4 @@
+import {crc32 as nativeCRC} from 'node:zlib';
 import assert from 'node:assert/strict';
 import {deflateSync} from 'node:zlib';
 import {decodePNG,nativeOpaqueRGBPNG} from '../cloudflare/png.mjs';
@@ -21,7 +22,8 @@ await assert.rejects(()=>decodePNG(png(1,1,4,Buffer.alloc(3))),/scanline size/);
 await assert.rejects(()=>decodePNG(png(1,1,4,Buffer.from([5,1,2,3,4]))),/filter/);
 const corrupt=png(1,1,4,Buffer.from([0,1,2,3,4]));corrupt[corrupt.length-1]^=1;await assert.rejects(()=>decodePNG(corrupt),/CRC/);
 const rgb=png(1,1,3,Buffer.from([0,1,2,3]));
-const damaged=Buffer.from(rgb);damaged[damaged.length-1]^=1;assert.throws(()=>nativeOpaqueRGBPNG(damaged,[1,1]),/CRC/);
+assert.deepEqual(nativeOpaqueRGBPNG(rgb,[1,1],nativeCRC),nativeOpaqueRGBPNG(rgb,[1,1]));
+const damaged=Buffer.from(rgb);damaged[damaged.length-1]^=1;assert.throws(()=>nativeOpaqueRGBPNG(damaged,[1,1]),/CRC/);assert.throws(()=>nativeOpaqueRGBPNG(damaged,[1,1],nativeCRC),/CRC/);
 const transparentRGB=Buffer.concat([rgb.subarray(0,33),chunk('tRNS',Buffer.alloc(6)),rgb.subarray(33)]);assert.throws(()=>nativeOpaqueRGBPNG(transparentRGB,[1,1]),/opaque PNG/);
 assert.throws(()=>nativeOpaqueRGBPNG(rgb.subarray(0,-1),[1,1]),/Incomplete|Truncated/);
 console.log('PASS RGB/RGBA all five PNG filters, partial alpha preserved, bounded inflate, short data, invalid filters and CRC rejection; provider calls 0');

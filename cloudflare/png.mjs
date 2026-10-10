@@ -115,7 +115,7 @@ export function pinnedReferencePNG(bytes){
 
 
 
-export function nativeOpaqueRGBPNG(bytes,size){
+export function nativeOpaqueRGBPNG(bytes,size,checksum=crc){
  if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024||!sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
  if(v.getUint32(8)!==13||new TextDecoder().decode(bytes.subarray(12,16))!=='IHDR')throw Error('PNG header');
@@ -126,7 +126,7 @@ export function nativeOpaqueRGBPNG(bytes,size){
  while(p+12<=bytes.length){
   const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated PNG');
   const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));
-  if(crc(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
+  if(checksum(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
   if((p!==8&&type==='IHDR')||type==='tRNS')throw Error('Unsupported opaque PNG chunk');
   if(type==='IDAT')idat ||= n>0;
   if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('PNG end');ended=true;break;}
