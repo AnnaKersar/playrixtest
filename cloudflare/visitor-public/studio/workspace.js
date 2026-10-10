@@ -28,9 +28,9 @@ function versions(){const v=JSON.parse(localStorage.getItem(storage+'/versions')
 function renderAccounting(all){
  let panel=$('accounting-closures');if(!panel){panel=element('div');panel.id='accounting-closures';document.querySelector('.owner-tools').append(panel);}panel.replaceChildren();
  panel.append(element('p','Доступ: '+(state?.role==='owner'?'владелец':'посетитель')));if(state?.role!=='owner')return;const accountingLink=element('a','Скачать учёт попыток');accountingLink.href='/api/studies';accountingLink.download='attempt-accounting.json';panel.append(accountingLink);
- for(const a of (all.attempts||[]).filter(a=>a.mode==='live'&&a.principal_id==='owner'&&a.status==='claimed'&&a.actual==null&&!a.receipt_key&&!a.accounting_evidence?.receipt_present&&Date.now()-Date.parse(a.created_at)>20*60*1000)){
+ for(const a of (all.attempts||[]).filter(a=>a.mode==='live'&&a.principal_id==='owner'&&a.status==='claimed'&&a.actual==null&&!a.receipt_key&&!a.accounting_evidence?.receipt_present)){
  const row=element('div');row.append(element('p',a.job_id+' · Фактический расход неизвестен. Резерв $'+(a.reservation/1e9).toFixed(2)+' останется в расходах. Повторного запроса не будет.'));
- row.append(button('Закрыть с сохранением резерва',async()=>{await api('/api/budget/close-reserved-unknown',{jobId:a.job_id,expectedReservation:a.reservation,acknowledgeUnknownCost:true});say('status','Попытка закрыта вручную; фактический расход неизвестен, резерв сохранён.');await refresh();}));panel.append(row);
+ row.append(button('Закрыть с сохранением резерва',async()=>{await api('/api/budget/close-reserved-unknown',{jobId:a.job_id,expectedReservation:a.reservation,acknowledgeUnknownCost:true,acknowledgeEarlyClosure:true});say('status','Попытка закрыта вручную; фактический расход неизвестен, резерв сохранён.');await refresh();}));panel.append(row);
  }
 }
 
