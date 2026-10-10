@@ -20,7 +20,7 @@ export function subjectLighting(rgba,width,height,override='auto'){
  const name=(vector[1]<0?'upper':'lower')+'-'+(vector[0]<0?'left':vector[0]>0?'right':'center'),shadowVector=vector.map(v=>-v);
  return {version:'subject-light-shadow/v2',override,method,lightDirection:name,lightVector:vector,shadowDirection:(shadowVector[1]<0?'upper':'lower')+'-'+(shadowVector[0]<0?'left':shadowVector[0]>0?'right':'center'),shadowVector,confidence,ambiguous,scope:'surface-only'};
 }
-export function shadowProjection(width,height,lighting){const foot=height*C2_SURFACE_POLICY.objectBottomFraction;return {foot,baseY:foot-height*.003,centerX:width*.5,compression:.14*lighting.shadowVector[1],shear:.24*lighting.shadowVector[0],spread:.80};}
+export function shadowProjection(width,height,lighting){const foot=height*C2_SURFACE_POLICY.objectBottomFraction;return {foot,baseY:foot-height*.025*lighting.shadowVector[1],centerX:width*.5,compression:.10*lighting.shadowVector[1],shear:.12*lighting.shadowVector[0],spread:.92};}
 export function projectShadowPoint(x,y,p){return [p.centerX+p.spread*(x-p.centerX)+p.shear*(p.foot-y),p.baseY+p.compression*(p.foot-y)];}
 export function unprojectShadowPoint(x,y,p){const sourceY=p.foot-(y-p.baseY)/p.compression;return [p.centerX+(x-p.centerX-p.shear*(p.foot-sourceY))/p.spread,sourceY];}
 export function surfacePalette(selection,sampleRGB){
@@ -34,12 +34,13 @@ export function surfacePalette(selection,sampleRGB){
 // Copy the subject alpha, flatten and shear it onto the plane. Soften only the shadow.
 export function projectedSubjectShadow(rgba,width,height,layout={scale:1,dx:0,dy:0},lighting=subjectLighting(rgba,width,height)){
  const {scale,dx,dy}=layout,projection=shadowProjection(width,height,lighting);
+ let sourceTop=height;outer:for(let y=0;y<height;y++)for(let x=0;x<width;x++)if(rgba[(y*width+x)*4+3]>30){sourceTop=y;break outer;}const castDepth=Math.max(1,(projection.foot-(sourceTop*scale+dy))*Math.abs(projection.compression));
  const alpha=new Float32Array(width*height),out=new Float32Array(alpha.length),horizon=surfaceHorizon(height);
  for(let y=horizon;y<height;y++)for(let x=0;x<width;x++){
   const [subjectX,subjectY]=unprojectShadowPoint(x+.5,y+.5,projection);if(subjectY>projection.foot)continue;
   const u=(subjectX-dx)/scale-.5,v=(subjectY-dy)/scale-.5,ix=Math.floor(u),iy=Math.floor(v),fx=u-ix,fy=v-iy;let a=0;
   for(let oy=0;oy<2;oy++)for(let ox=0;ox<2;ox++){const xx=ix+ox,yy=iy+oy;if(xx>=0&&xx<width&&yy>=0&&yy<height)a+=rgba[(yy*width+xx)*4+3]/255*(ox?fx:1-fx)*(oy?fy:1-fy);}
-  const distance=Math.min(1,Math.abs(y-projection.baseY)/(height*.12)),fade=1-distance*distance*(3-2*distance);
+  const distance=Math.min(1,Math.abs(y-projection.baseY)/castDepth),fade=1-distance*distance*(3-2*distance);
   alpha[y*width+x]=a*.30*fade;
  }
  // Small separable kernel belongs to the shadow layer, never to the object layer.
