@@ -1,3 +1,4 @@
+import {miniGame} from './mini-game.mjs';
 import {isReferenceSeedPath,copyReferenceSeed} from './reference-seed.mjs';
 import {ownerNavigationRedirect} from './owner-navigation.mjs';
 import {referenceLibraryPublic,referenceLibraryImport} from './reference-library.mjs';
@@ -32,7 +33,7 @@ export async function sessionEndpoint(request,env){
  await env.DB.prepare('INSERT INTO anonymous_sessions VALUES (?,?,?)').bind(await sha(token),principalId,expires).run();
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
-const publicPaths=new Set(['/generation-background.mjs','/generation-background.css','/generator.js','/card-actions.mjs','/generation-progress.mjs','/generator-model.mjs','/collection-policy.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
+const publicPaths=new Set(['/minigame.html','/minigame.js','/minigame.css','/generation-background.mjs','/generation-background.css','/generator.js','/card-actions.mjs','/generation-progress.mjs','/generator-model.mjs','/collection-policy.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
 for(const file of ['', '/', '/index.html', '/style.css', '/test.json', ...['ref','gpt-latest','flux-lora','flux-base'].flatMap(group=>['cup','basket'].map(object=>'/'+group+'-'+object+'.png'))])publicPaths.add('/archive/latest-lora-test'+file);
 for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json'])publicPaths.add('/archive-seed/history-v1/'+file);
@@ -45,6 +46,7 @@ export function createPublicGuestWorker(backend){return {
    if(['GET','HEAD'].includes(request.method)&&publicPaths.has(url.pathname)){
     if(!env.PUBLIC_ASSETS)return json({error:'Public-safe editor not configured'},503);const r=await env.PUBLIC_ASSETS.fetch(request),headers=new Headers(r.headers);headers.set('Cache-Control','no-store');headers.set('Content-Security-Policy',"frame-src 'self'; default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");headers.set('X-Content-Type-Options','nosniff');return new Response(request.method==='HEAD'?null:r.body,{status:r.status,headers});
    }
+   if(url.pathname==='/api/game'||url.pathname==='/api/game/image')return miniGame(request,env);
    if(url.pathname==='/api/generation-status'&&request.method==='GET'){
  if(!env.DB||!env.ARTIFACTS)return json({error:'Диагностика временно недоступна'},503);
  const run=await env.DB.prepare("SELECT id FROM runs WHERE mode='live' ORDER BY created_at DESC LIMIT 1").first();if(!run)return json({version:'public-generation-status/v1',cards:[]});
