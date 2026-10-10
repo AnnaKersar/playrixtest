@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {imageRequest} from '../cloudflare/provider.mjs';
+const bytes=Buffer.alloc(8*1024*1024);for(let i=0;i<bytes.length;i++)bytes[i]=i%251;
+const encoded=bytes.toString('base64'),events=[];let calls=0;
+const result=await imageRequest({LIVE_GENERATION_ENABLED:'true',OPENAI_API_KEY:'test-only'},'test',Array.from({length:13},()=>new Uint8Array([1])),async()=>{calls++;return Response.json({data:[{b64_json:encoded}],usage:null},{headers:{'x-request-id':'test-request'}});},{background:'opaque',size:'864x960',stage:async(name,operation,input={},describe=()=>({}))=>{events.push(name);const value=await operation();describe(value);return value;}});
+assert.deepEqual(result.png,bytes);assert.equal(calls,1);assert.equal(result.requestId,'test-request');
+assert.deepEqual(events,['provider_http_wait','provider_json_read','provider_base64_decode']);
+await assert.rejects(()=>imageRequest({LIVE_GENERATION_ENABLED:'true',OPENAI_API_KEY:'test-only'},'test',Array.from({length:13},()=>new Uint8Array([1])),async()=>{calls++;return new Response('',{status:429});}));
+assert.equal(calls,2);
+console.log('PASS 8 MiB byte-exact decode, stage diagnostics, one request and no retry on failure; paid calls 0');
