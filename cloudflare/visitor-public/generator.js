@@ -60,7 +60,7 @@ window.addEventListener('generation-progress',updateGenerationUI);
 async function launch(){
   if(busy)return;
   $('launch').disabled=true;
-  try{await refreshReadiness({resume:!!readGeneration().pending?.planId});await startGeneration($('collection-name').value,$('producer-wishes').value,saved.advanced);updateGenerationUI();}
+  try{const gate=await api('/api/preflight');if(gate.role==='owner'&&gate.budget?.live_blockers?.includes('attempt_billing_reconciliation_required')){text('launch-status','Завершаем учёт предыдущих попыток…');await api('/api/budget/reconcile',{});}await refreshReadiness({resume:!!readGeneration().pending?.planId});await startGeneration($('collection-name').value,$('producer-wishes').value,saved.advanced);updateGenerationUI();}
   catch(e){text('launch-status',e.message);$('launch').disabled=false;}
 }
 $('launch-form').onsubmit=e=>{e.preventDefault();launch();};

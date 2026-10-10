@@ -28,7 +28,7 @@ async function getJSON(env,key){const value=await env.ARTIFACTS.get(key);if(!val
 async function accountingEvidence(env,attempt){
   const job=await one(env,'SELECT run_id,object_id FROM jobs WHERE id=?',attempt.job_id);
   const canonical=job?'runs/'+job.run_id+'/'+job.object_id+'/receipt.json':null;
-  const receiptKey=canonical||attempt.receipt_key;
+  const receiptKey=canonical||attempt.receipt_key||'planner/'+attempt.job_id+'/receipt.json';
   const receipt=receiptKey?await env.ARTIFACTS.get(receiptKey):null;
   let journal=null;try{journal=await journalRead(env,attempt.job_id);}catch(error){if(error.status!==404)throw error;}
   const evidence={receipt_key:receiptKey,receipt_present:!!receipt,journal};
@@ -236,6 +236,7 @@ export function createWorker(deps={}){return {
     env=await referenceEnvironment(env);const url=new URL(request.url);if(!['GET','HEAD','POST'].includes(request.method))return json({error:'Method not allowed'},405);
     if(request.method==='POST'&&request.headers.get('Origin')!==url.origin)return json({error:'Same-origin request required'},403);
     try{
+      if(url.pathname==='/api/budget/reconcile'&&request.method==='POST')return json(await reconcilePreviousAttempts(env,auth));
       if(url.pathname==='/api/budget/unknown-reserve'&&request.method==='POST'){
         ownerOnly(auth);const body=await bodyJSON(request);if(body.reservation!==1000000000||body.acknowledgeUnknownCost!==true)fail(400,'Explicit $1 unknown-cost policy required');
         const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND actual IS NULL AND receipt_key IS NULL AND status IN ('claimed','unknown','closed_reserved_unknown')");
@@ -288,10 +289,10 @@ export function createWorker(deps={}){return {
           const body=await bodyJSON(request,url.pathname==='/api/reassemble-upload'?8*1024*1024:2000000);
           if(url.pathname==='/api/reassemble-upload')return json(await saveEditorAssembly(env,body,auth));
           if(url.pathname==='/api/reassemble')return json(await reassembleStored(env,body.jobId,auth,{lightDirection:body.lightDirection}));
-          if(url.pathname==='/api/plan-live')return json(await createPlan(env,body,auth),202);
+          if(url.pathname==='/api/plan-live'){if(auth.role==='owner')await reconcilePreviousAttempts(env,auth);return json(await createPlan(env,body,auth),202);}
           if(url.pathname==='/api/planner-recover'){ownerOnly(auth);if(!safeId(body.requestId))fail(400,'Invalid planner ID');return json(await recoverPlan(env,body.requestId));}
           if(url.pathname==='/api/plan-mock'){generationRole(auth);return json(await planMock(body));}
-          if(url.pathname==='/api/runs')return json(await createRun(env,body,auth),201);
+          if(url.pathname==='/api/runs'){if(auth.role==='owner')await reconcilePreviousAttempts(env,auth);return json(await createRun(env,body,auth),201);}
           if(url.pathname==='/api/requeue-run'){ownerOnly(auth);if(!safeId(body.runId))fail(400,'Invalid run ID');await runAccess(env,auth,body.runId);if(await env.ARTIFACTS.head('runs/'+body.runId+'/cancelled.json'))fail(409,'Collection cancelled');const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status IN ('queued','failed','blocked') AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",body.runId);let sent=0;for(const job of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',job.id))continue;await query(env,"UPDATE jobs SET status='queued' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();await queueDiagnostic(env,job.id,'requeue_requested');await env.IMAGE_JOBS.send({version:1,jobId:job.id});sent++;}return json({runId:body.runId,sent,planner_repeated:false,previous_provider_attempts_repeated:false});}
           if(url.pathname==='/api/dispatch'){ownerOnly(auth);return json({sent:await dispatch(env)});}
           if(url.pathname==='/api/candidates')return json(await saveCandidates(env,body,auth));
@@ -363,6 +364,35 @@ export function createWorker(deps={}){return {
     }
   }
 };}
+
+export async function reconcilePreviousAttempts(env,auth){
+ ownerOnly(auth);const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND (status<>'complete' OR actual IS NULL) AND status NOT IN ('closed_reserved_unknown','cost_bound_exceeded')");
+ const report={settled:0,closed_unknown:0,still_running:0,provider_calls:0};
+ for(const a of rows){
+  const job=await one(env,'SELECT * FROM jobs WHERE id=?',a.job_id);
+  const cancelled=job&&!!await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json');
+  const stale=Date.now()-Date.parse(a.created_at)>=20*60*1000;
+  const evidence=await accountingEvidence(env,a);
+  if(evidence.receipt_present){
+   const key=evidence.receipt_key;
+   if(!job){await recoverPlan(env,a.job_id);const fresh=await one(env,'SELECT * FROM attempts WHERE job_id=?',a.job_id);if(fresh.actual!=null){report.settled++;continue;}}
+   const receipt=await getJSON(env,key),cost=job?(receipt.cost??usageCost(receipt.usage)):null;
+   if(Number.isSafeInteger(cost)&&cost>=0){
+    await journalEvent(env,a.job_id,'auto-accounting-settled-'+cost,'automatic_accounting_reconciliation',{principal_id:auth.principalId,actual_cost_nanodollars:cost,receipt_key:key,provider_calls:0});
+    await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,receipt_key=? WHERE job_id=? AND (status<>'complete' OR actual IS NULL)",cost,cost,key,a.job_id).run();report.settled++;continue;
+   }
+   // Preserve the receipt even when its usage does not establish a price.
+   if(!stale&&!cancelled){report.still_running++;continue;}
+  }else if(a.actual!=null){
+   if(!stale&&!cancelled){report.still_running++;continue;}
+   await query(env,"UPDATE attempts SET status='complete' WHERE job_id=? AND actual IS NOT NULL",a.job_id).run();report.settled++;continue;
+  }else if(a.status==='claimed'&&!stale&&!cancelled){report.still_running++;continue;}
+  await journalEvent(env,a.job_id,'auto-unknown-reserve-one-dollar','automatic_accounting_reconciliation',{principal_id:auth.principalId,previous_reservation_nanodollars:a.reservation,reservation_nanodollars:1000000000,actual_cost_nanodollars:null,receipt_present:evidence.receipt_present,decision:'User-authorized unknown-cost reserve $1; preserve evidence; no provider replay',provider_calls:0});
+  const r=await query(env,"UPDATE attempts SET status='closed_reserved_unknown',reservation=1000000000 WHERE job_id=? AND actual IS NULL AND status<>'closed_reserved_unknown'",a.job_id).run();report.closed_unknown+=r.meta.changes||0;
+ }
+ return report;
+}
+
 export default createWorker();
 
 
