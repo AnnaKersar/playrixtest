@@ -18,3 +18,5 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 #advanced-total{font-weight:700}
 
 .generator-sidebar{overflow-y:auto}.collection-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 12px;min-width:0}.collection-heading h2{flex:0 1 auto}#collection-category{margin:0;font-size:13px;font-weight:700;color:#7b54b2;overflow-wrap:anywhere}#automatic-comparison{flex-shrink:0;min-height:230px}
+
+#selected-card-info{flex:none;min-height:auto;display:block}#original-cards{height:auto;min-height:0;flex-shrink:0}#original-cards figure{display:flex;flex-direction:column;min-height:0;overflow:visible}#original-cards figcaption{position:static;flex:none;line-height:1.4}#comparison-status{position:static;display:block;clear:both;margin:12px 0 0;line-height:1.5;overflow-wrap:anywhere}#automatic-comparison{flex:none;height:auto;min-height:0;padding-bottom:12px}.card-actions [hidden]{display:none!important}

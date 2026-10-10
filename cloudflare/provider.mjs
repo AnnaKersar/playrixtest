@@ -13,6 +13,7 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch,options={}) {
   const background=options.background||'transparent';if(!['transparent','opaque'].includes(background))throw Error('Invalid background mode');
   const size=options.size||'1376x1536';if(!['1376x1536','864x960'].includes(size))throw Error('Invalid requested image size');
   const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size,quality:'medium',background,output_format:'png',prompt}))body.append(k,v);
+  if(options.sourceImage){if(!(options.sourceImage instanceof Uint8Array)||options.sourceImage.length>25*1024*1024)throw Error('Invalid edit source');body.append('image[]',new Blob([options.sourceImage],{type:'image/png'}),'card-to-edit.png');}
   sheets.forEach((bytes,i)=>body.append('image[]',new Blob([bytes],{type:'image/png'}),`sheet-${i+1}.png`));
   // Exactly one send. No SDK retries, redirects, alternative models or replay after timeout.
   const stage=options.stage||((name,operation)=>operation());
