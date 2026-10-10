@@ -236,6 +236,17 @@ export function createWorker(deps={}){return {
     env=await referenceEnvironment(env);const url=new URL(request.url);if(!['GET','HEAD','POST'].includes(request.method))return json({error:'Method not allowed'},405);
     if(request.method==='POST'&&request.headers.get('Origin')!==url.origin)return json({error:'Same-origin request required'},403);
     try{
+      if(url.pathname==='/api/budget/unknown-reserve'&&request.method==='POST'){
+        ownerOnly(auth);const body=await bodyJSON(request);if(body.reservation!==1000000000||body.acknowledgeUnknownCost!==true)fail(400,'Explicit $1 unknown-cost policy required');
+        const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND actual IS NULL AND receipt_key IS NULL AND status IN ('claimed','unknown','closed_reserved_unknown')");
+        let updated=0,skipped=0;for(const a of rows){
+          const evidence=await accountingEvidence(env,a);if(evidence.receipt_present){skipped++;continue;}
+          if(a.status==='closed_reserved_unknown'&&a.reservation===1000000000)continue;
+          await journalEvent(env,a.job_id,'unknown-reserve-one-dollar-'+a.reservation,'manual_accounting_reserve_adjustment',{principal_id:auth.principalId,previous_reservation_nanodollars:a.reservation,reservation_nanodollars:1000000000,actual_cost_nanodollars:null,decision:'Owner sets unknown-cost reserve to $1; not actual provider charge or invoice; replay forbidden',provider_calls:0});
+          const result=await query(env,"UPDATE attempts SET reservation=1000000000,status='closed_reserved_unknown' WHERE job_id=? AND actual IS NULL AND receipt_key IS NULL AND status IN ('claimed','unknown','closed_reserved_unknown') AND reservation=?",a.job_id,a.reservation).run();updated+=result.meta.changes||0;
+        }
+        return json({updated,skipped,reservation:1000000000,actual_cost:null,provider_calls:0});
+      }
       if(url.pathname==='/api/cancel-run'&&request.method==='POST'){
         ownerOnly(auth);const body=await bodyJSON(request);if(!safeId(body.runId))fail(400,'Invalid run');
         await runAccess(env,auth,body.runId);
