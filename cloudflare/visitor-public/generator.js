@@ -77,3 +77,5 @@ async function updatePublicDiagnostics(){try{const d=await api('/api/generation-
 publicDiagnosticBox.addEventListener('toggle',()=>{if(publicDiagnosticBox.open)updatePublicDiagnostics();});await updatePublicDiagnostics();setInterval(()=>{if(publicDiagnosticBox.open)updatePublicDiagnostics();},10000);
 
 updateGenerationUI();setInterval(()=>{if(readGeneration().pending?.runId)updateGenerationUI();},5000);
+
+let appliedVersion=localStorage.getItem('card-collection-update');function refreshAppliedCards(){const next=localStorage.getItem('card-collection-update');if(next!==appliedVersion){appliedVersion=next;rendered.clear();lastRunSignature='';if(runId)void loadRun(runId);}}window.addEventListener('storage',refreshAppliedCards);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshAppliedCards()});

@@ -1,3 +1,4 @@
+import '/card-edit-background.mjs';
 import {collectionBrief,plannedCollection,plannerPayload,imagePayload} from '/generator-model.mjs?v=quality-v1';
 import {plannerStopped,plannerProgress,imageProgress} from '/generation-progress.mjs';
 export const generationKey='card-studio-generator/v2';

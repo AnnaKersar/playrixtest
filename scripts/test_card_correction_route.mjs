@@ -14,3 +14,16 @@ const row=db.prepare('SELECT * FROM runs WHERE id=?').get(value.runId),newFrozen
 const again=await worker.fetch(request(),env);assert.equal(again.status,202);assert.equal(sent.length,1);assert.equal(db.prepare('SELECT COUNT(*) n FROM card_edits').get().n,1);assert.equal(db.prepare("SELECT final_key FROM results WHERE job_id='r_o'").get().final_key,'final');
 const guest=createWorker({authenticate:async()=>({role:'visitor',principalId:'guest'})});assert.equal((await guest.fetch(request(),env)).status,403);
 console.log('PASS correction queued once, original image unchanged, source SHA pinned, exact generation contract/dimensions preserved, owner-only access and stable request id; paid calls 0');
+async function apply(sourceJobId,jobId,client=worker){return client.fetch(new Request('https://test/api/card-apply',{method:'POST',headers:{Origin:'https://test','Content-Type':'application/json'},body:JSON.stringify({sourceJobId,jobId})}),env)}
+assert.equal((await apply('r_o',value.jobId)).status,409);
+assert.equal((await apply('r_o',value.jobId,guest)).status,403);
+db.prepare("UPDATE jobs SET status='complete' WHERE id=?").run(value.jobId);
+db.prepare('INSERT INTO results VALUES (?,?,?,?)').run(value.jobId,'edit-raw','edit-final','edit-manifest');objects.set('edit-final',new Uint8Array([8]));
+assert.equal((await apply('r_o',value.jobId)).status,200);
+assert.equal((await apply('r_o',value.jobId)).status,200);
+assert.equal(db.prepare('SELECT edit_job_id FROM card_applied WHERE source_job_id=?').get('r_o').edit_job_id,value.jobId);
+assert.equal(db.prepare("SELECT final_key FROM results WHERE job_id='r_o'").get().final_key,'final');
+assert.equal((await apply('r_o','r_o')).status,409);
+assert.equal(sent.length,1);
+console.log('PASS apply requires complete linked version and owner; persisted replacement is idempotent; original preserved; no generation');
+
