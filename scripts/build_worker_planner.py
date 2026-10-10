@@ -4,7 +4,7 @@ root=Path(__file__).resolve().parents[1]
 prompt=(root/'prompts/narrative-collection-designer-v1.2.md').read_text(encoding='utf8')
 examples=json.loads((root/'config/enrichment-v1.1-examples.json').read_text(encoding='utf8'))['examples']
 schema=json.loads((root/'config/planner-output.schema.json').read_text(encoding='utf8'))
-code="// Generated from the versioned public planner contract by scripts/build_worker_planner.py.\nimport {collectionRules} from './visitor-public/collection-policy.mjs';\nimport { sha } from './provider.mjs';\nexport const PLANNER_VERSION='narrative-collection-designer/v1.3';\n"
+code="// Generated from the versioned public planner contract by scripts/build_worker_planner.py.\nimport {collectionRules} from './visitor-public/collection-policy.mjs';\nimport { sha } from './provider.mjs';\nexport const PLANNER_VERSION='narrative-collection-designer/v1.4';\n"
 code+='const basePlannerPrompt='+json.dumps(prompt,ensure_ascii=False)+';\nexport const plannerPrompt=basePlannerPrompt+\'\\n\'+collectionRules;\nconst examples='+json.dumps(examples,ensure_ascii=False)+';\nexport const plannerSchema='+json.dumps(schema,ensure_ascii=False)+';\n'
 code+='''export async function planMock(body) {
  const theme=body.theme||'',gd=body.gd_brief||'';

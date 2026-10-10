@@ -85,7 +85,8 @@
                 "asset_stage",
                 "semantic_family",
                 "living_creatures",
-                "factual_checks"
+                "factual_checks",
+                "composition_key"
               ],
               "properties": {
                 "object_id": {
@@ -395,6 +396,20 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "composition_key": {
+                  "enum": [
+                    "upright-offset",
+                    "low-diagonal",
+                    "top-down-spread",
+                    "horizontal-closeup",
+                    "frontal-symmetric",
+                    "three-quarter-wide",
+                    "foreground-to-depth",
+                    "corner-perspective",
+                    "curved-silhouette",
+                    "layered-detail"
+                  ]
                 }
               }
             }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {categoryVisualSchedule,validateCategoryInventory,collectionRules} from '../cloudflare/visitor-public/collection-policy.mjs';
+import {categoryVisualSchedule,validateCategoryInventory,validateNarrativeSequence,collectionRules} from '../cloudflare/visitor-public/collection-policy.mjs';
 import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
 import {generationContract} from '../cloudflare/generation-contract.mjs';
 const items=Array.from({length:10},(_,i)=>({semantic_family:['instrument','audio_equipment','clothing_accessory','recorded_media'][i%4],living_creatures:'none',factual_checks:['Pedal belongs on the rear batter head','Stand feet contact a common ground plane']}));
@@ -9,7 +9,7 @@ assert.throws(()=>validateCategoryInventory([{...items[0],living_creatures:'huma
 assert.throws(()=>validateCategoryInventory([{...items[0],factual_checks:[]}]),/проверки/);
 for(let seed=0;seed<200;seed++)for(const count of [1,3,10,15]){
  const deck=categoryVisualSchedule(count,'seed-'+seed);
- assert.equal(deck.length,count);assert.deepEqual(deck,categoryVisualSchedule(count,'seed-'+seed));
+ assert.equal(deck.length,count);assert(deck.every((v,i)=>i===0||v.background_palette!==deck[i-1].background_palette));assert.deepEqual(deck,categoryVisualSchedule(count,'seed-'+seed));
  assert.equal(new Set(deck.map(v=>v.background_pattern)).size,count);
  for(const v of deck)assert(deck.filter(n=>n.background_palette===v.background_palette).length<=v.palette_repeat_limit);
  if(count===10)assert(new Set(deck.map(v=>v.background_palette)).size>=4);
@@ -25,3 +25,11 @@ for(const category of ['C1','C2','C3','C4']){
  if(category==='C4'){assert.match(prompt,/INTEGRATED INTO A DETAILED ENVIRONMENT OR A DETAILED SCENE-FILLING SURFACE/);assert.match(prompt,/NO STANDARD BACKGROUND/);assert.match(prompt,/football pitch/);assert(!prompt.includes('Background gradient targets'));}
 }
 console.log('PASS living-creature ban, semantic diversity, 800 seeded category decks, palette caps, unique patterns, size/perspective/construction rules in every C1-C4 prompt; paid calls 0');
+
+
+const sequence=['C4','C1','C3','C4','C2','C1','C4','C3','C1','C4'].map((production_category,i)=>({...items[i],production_category,theme_role:'We noticed a meaningful trace at step '+i,composition_key:'layout-'+i}));
+validateNarrativeSequence(sequence);
+assert.throws(()=>validateNarrativeSequence(sequence.map((o,i)=>i===1?{...o,composition_key:sequence[0].composition_key}:o)),/композицию/);
+assert.throws(()=>validateNarrativeSequence(sequence.map((o,i)=>i===1?{...o,production_category:'C4'}:o)),/чередоваться/);
+assert.match(collectionRules,/Every thematic category is a visit/);assert.match(collectionRules,/gold\/brass on yellow\/gold/i);
+console.log('PASS narrative beats, mixed production types, adjacent composition rejection and distinct neighboring hues; paid calls 0');
