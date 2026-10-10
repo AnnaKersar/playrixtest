@@ -82,7 +82,10 @@
                 "detail_budget",
                 "camera_plan",
                 "production_category",
-                "asset_stage"
+                "asset_stage",
+                "semantic_family",
+                "living_creatures",
+                "factual_checks"
               ],
               "properties": {
                 "object_id": {
@@ -360,6 +363,38 @@
                     "object_with_surface",
                     "whole_card"
                   ]
+                },
+                "semantic_family": {
+                  "type": "string",
+                  "enum": [
+                    "instrument",
+                    "audio_equipment",
+                    "clothing_accessory",
+                    "printed_material",
+                    "recorded_media",
+                    "furniture",
+                    "container",
+                    "tool",
+                    "lighting",
+                    "architecture",
+                    "decoration",
+                    "food",
+                    "game",
+                    "transport",
+                    "other"
+                  ]
+                },
+                "living_creatures": {
+                  "type": "string",
+                  "enum": [
+                    "none"
+                  ]
+                },
+                "factual_checks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {cardTypeMix,collectionBrief,collectionSettings,plannedCollection,imagePayload} from '../cloudflare/visitor-public/generator-model.mjs';
 import {generationContract,generationInstructions} from '../cloudflare/generation-contract.mjs';
-const object=i=>({object_id:'object_'+i,main_identity:'Film prop '+i,production_category:'C2',asset_stage:'foreground_only',object_brief:'One clean illustrated film prop',contents:[],decoration:[]});
+const object=i=>({object_id:'object_'+i,main_identity:'Film prop '+i,semantic_family:['instrument','audio_equipment','clothing_accessory','printed_material'][i%4],living_creatures:'none',factual_checks:['Functional parts connect to the main body','All feet contact the same ground plane'],production_category:'C2',asset_stage:'foreground_only',object_brief:'One clean illustrated film prop',contents:[],decoration:[]});
 const group=(name,count,offset=0)=>({name,coherence_rationale:'Film genre',objects:Object.entries(cardTypeMix(count)).flatMap(([type,n])=>Array.from({length:n},()=>type)).map((type,i)=>({...object(i+offset),production_category:type,asset_stage:type==='C3'?'object_with_surface':type==='C4'?'whole_card':'foreground_only'}))});
 const base=collectionBrief('Films','');
 assert.equal(base.collection_settings.category_count,1);assert.equal(base.card_count,10);

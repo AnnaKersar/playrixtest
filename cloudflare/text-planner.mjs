@@ -1,3 +1,4 @@
+import {validateCategoryInventory} from './visitor-public/collection-policy.mjs';
 import {ART_DIRECTION_RULE_VERSION,artDirectionRule} from './art-direction-policy.mjs';
 import {experimentContext,journalPrepare,journalEvent} from './experiment-journal.mjs';
 import {generationRole} from './roles.mjs';
@@ -28,6 +29,7 @@ export function parsePlan(payload,frozen){
  if(payload.status!=='completed')throw Error('Incomplete planner response');const content=(payload.output||[]).flatMap(o=>o.content||[]);if(content.some(c=>c.type==='refusal'))throw Error('Planner refusal');const text=content.filter(c=>c.type==='output_text').map(c=>c.text).join('');if(text.length>1000000)throw Error('Planner output too large');const plan=JSON.parse(text);validate(strictSchema(plannerSchema),plan);
  if(plan.art_direction_sha256!==frozen.input.immutable_art_direction.sha256||plan.art_direction_version!==frozen.input.immutable_art_direction.version)throw Error('Art Direction changed');const objects=plan.collections.flatMap(c=>c.objects);if(!objects.length||objects.length>20||new Set(objects.map(o=>o.object_id)).size!==objects.length)throw Error('Invalid object inventory');
  if(objects.some(o=>o.production_category==='C3'&&o.asset_stage!=='object_with_surface'))throw Error('C3 requires meaningful surface');
+ for(const c of plan.collections)validateCategoryInventory(c.objects);
  return {version:PLANNER_VERSION,provider:'openai',llm_inference:true,review_required:true,...plan,objects:objects.map(o=>({object_id:o.object_id,name:o.main_identity,brief:o.object_brief}))};
 }
 export async function createPlan(env,b,auth){

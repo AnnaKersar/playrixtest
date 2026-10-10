@@ -1,7 +1,7 @@
-import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=poll-v2-20261010';
+import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
-import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs';
+import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
 const $=id=>document.getElementById(id),key='card-studio-generator/v2';let saved=JSON.parse(localStorage.getItem(key)||'{}'),runId=null,jobs=[],refs=[],page=0,busy=false,ready=false,serial=0,selection=0;let selectedComparisonJob=null;const rendered=new Map(),persist=()=>localStorage.setItem(key,JSON.stringify(saved));
 async function api(path,body){let r;try{r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});}catch(e){throw Error('Не удалось получить ответ сайта · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}const raw=await r.text();let d;try{d=JSON.parse(raw);}catch{throw Error('Сайт вернул неожиданный ответ вместо JSON · HTTP '+r.status+' · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}if(!r.ok)throw Error((d.error||String(r.status))+' · '+path.split('?')[0]+(d.diagnostic?' · '+d.diagnostic:''));return d;}
 
@@ -19,7 +19,7 @@ function renderCategorySettings(){
   const row=saved.advanced.categories[i]||={name:'',theme:'',card_count:''};
   for(const [key,label,placeholder,type]of [['name','Название категории','Система придумает','text'],['theme','Тема этой категории','По общей теме категорий','text'],['card_count','Карточек в категории','10','number']]){
    const id='category-'+i+'-'+key,l=node('label',label),input=node('input');l.htmlFor=id;input.id=id;input.type=type;input.value=row[key]||'';input.placeholder=placeholder;
-   if(type==='number'){input.min=1;input.max=20;}else input.maxLength=300;
+   if(type==='number'){input.min=1;input.max=15;}else input.maxLength=300;
    input.oninput=()=>{(saved.advanced.categories[i]||={})[key]=input.value;advancedChanged();};box.append(l,input);
   }return box;
  }));updateAdvancedTotal();
