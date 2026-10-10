@@ -1,6 +1,6 @@
 import {createProcessing,processingHealth,safeProcessingError} from './processing-diagnostics.mjs';
 import {generationContract,validateAlpha} from './generation-contract.mjs';
-import {proceduralCard} from './procedural-card.mjs';
+import {proceduralCard,COMPOSITION_VERSION} from './procedural-card.mjs';
 import {attemptPacket} from './attempt-archive.mjs';
 import {compileObjectPrompt,OBJECT_CONTENT_POLICY_VERSION} from './object-content-policy.mjs';
 import {referenceEnvironment} from './reference-import.mjs';
@@ -110,6 +110,25 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
   ]));
   await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:savedFrozen.final});
 }
+export async function reassembleStored(env,jobId,auth){
+ ownerOnly(auth);if(!safeId(jobId))fail(400,'Invalid job');await jobAccess(env,auth,jobId);
+ const job=await one(env,'SELECT * FROM jobs WHERE id=?',jobId),result=await one(env,'SELECT * FROM results WHERE job_id=?',jobId);
+ if(job?.status!=='complete'||!result)fail(409,'Completed result required');
+ const previous=await getJSON(env,result.manifest_key);
+ if(previous.generation?.mode!=='modular'||!previous.foreground_key)fail(409,'Stored transparent modular foreground required');
+ if(previous.composition?.version===COMPOSITION_VERSION)return {assembled:true,provider_calls:0,idempotent:true,composition:previous.composition};
+ const object=await env.ARTIFACTS.get(previous.foreground_key);if(!object)fail(409,'Stored foreground missing');
+ const bytes=new Uint8Array(await object.arrayBuffer());if(await sha(bytes)!==previous.foreground_sha256)fail(409,'Foreground SHA mismatch');
+ const layer=await decodePNG(bytes);validateAlpha(layer,previous.generation);
+ const card=proceduralCard(layer,previous.generation.category);validateAlpha(card,{mode:'whole_card'});
+ const final=await encodePNG(card.width,card.height,card.rgba),hash=await sha(final),prefix=`runs/${job.run_id}/${job.object_id}/assemblies/${hash}`;
+ const manifest={...previous,final_key:prefix+'.png',final_sha256:hash,composition:card.composition,artistic_review:'unreviewed',assembly_cost_nanodollars:0,assembly_created_at:new Date().toISOString(),previous_assemblies:[...(previous.previous_assemblies||[]),{final_key:result.final_key,manifest_key:result.manifest_key,final_sha256:previous.final_sha256}]};
+ await env.ARTIFACTS.put(manifest.final_key,final,{httpMetadata:{contentType:'image/png'}});await putJSON(env,prefix+'.json',manifest);
+ const changed=await query(env,'UPDATE results SET final_key=?,manifest_key=? WHERE job_id=? AND final_key=?',manifest.final_key,prefix+'.json',jobId,result.final_key).run();
+ if(!changed.meta.changes)fail(409,'Result changed during assembly; refresh before retrying');
+ await journalEvent(env,jobId,'assembly-'+hash,'assembly_rebuilt',{version:COMPOSITION_VERSION,provider_calls:0,foreground_sha256:previous.foreground_sha256,final_sha256:hash,previous_final_sha256:previous.final_sha256,surface:card.composition.surface});
+ return {assembled:true,provider_calls:0,composition:card.composition};
+}
 async function sendFinalization(env,job,processing){
   await processing.stage('finalization_send',()=>env.IMAGE_JOBS.send({version:1,kind:'image-recovery',jobId:job.id,parentExecutionId:processing.executionId}));
   await processing.end('waiting_finalization');
@@ -200,10 +219,11 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/studies'){const rows=await all(env,`SELECT r.*,COUNT(j.id) total,SUM(j.status='complete') complete FROM runs r LEFT JOIN jobs j ON r.id=j.run_id WHERE ?='owner' OR r.principal_id=? OR EXISTS(SELECT 1 FROM run_access a WHERE a.run_id=r.id AND a.principal_id=?) GROUP BY r.id ORDER BY created_at DESC`,auth.role,auth.principalId,auth.principalId);return json({runs:rows.map(redactRun),...(auth.role==='owner'?{budget:await budgetState(env),attempts:await Promise.all((await all(env,'SELECT * FROM attempts')).map(async attempt=>({...attempt,...(attempt.mode==='live'&&(attempt.status!=='complete'||attempt.actual==null)?{accounting_evidence:await accountingEvidence(env,attempt)}:{})})))}:{})});}
           if(url.pathname==='/api/run'){const runId=url.searchParams.get('run');if(!safeId(runId))fail(400,'Invalid run');const run=await runAccess(env,auth,runId);const frozen=await getJSON(env,run.frozen_key),objects=frozen.objects||[];const jobs=await all(env,'SELECT j.*,c.payload alternatives,ch.revision,ch.payload choice FROM jobs j LEFT JOIN candidates c ON c.job_id=j.id LEFT JOIN choices_v2 ch ON ch.job_id=j.id AND ch.principal_id=? WHERE j.run_id=?',auth.principalId,runId);return json({run:redactRun(run),jobs:await Promise.all(jobs.map(async j=>{const object=objects.find(o=>o.object_id===j.object_id);return {...j,queue_diagnostic:auth.role==='owner'?await readQueueDiagnostic(env,j.id):null,name:object?.name||j.object_id,category:['C1','C2','C3','C4'].includes(object?.category)?object.category:null,asset_stage:object?.asset_stage||null};}))});}
           if(url.pathname==='/api/export'){ownerOnly(auth);const runId=url.searchParams.get('run');if(!safeId(runId))fail(400,'Invalid run');const run=await one(env,'SELECT * FROM runs WHERE id=?',runId);if(!run)fail(404,'Run not found');return json({version:'study-export/v1',run,frozen:await getJSON(env,run.frozen_key),jobs:await all(env,'SELECT * FROM jobs WHERE run_id=?',runId),events:await all(env,'SELECT e.* FROM review_events_v2 e JOIN jobs j ON e.job_id=j.id WHERE j.run_id=? ORDER BY e.created_at',runId),candidates:await all(env,'SELECT c.* FROM candidates c JOIN jobs j ON c.job_id=j.id WHERE j.run_id=?',runId)});}
-          if(url.pathname==='/api/image-info'){const jobId=url.searchParams.get('job');if(!safeId(jobId))fail(400,'Invalid job');await jobAccess(env,auth,jobId);const row=await one(env,'SELECT manifest_key FROM results WHERE job_id=?',jobId);if(!row)fail(404,'Image not ready');const m=await getJSON(env,row.manifest_key);return json({final_sha256:m.final_sha256,foreground_sha256:m.foreground_sha256||null,has_foreground:!!m.foreground_key,generation_mode:m.generation?.mode||'legacy',final:m.final,alpha:m.alpha});}
-          if(url.pathname==='/api/asset'){const jobId=url.searchParams.get('job'),kind=url.searchParams.get('kind')||'final';if(!safeId(jobId)||!['raw','final','foreground','manifest'].includes(kind))fail(400,'Invalid asset');await jobAccess(env,auth,jobId);if(!['final','foreground'].includes(kind))ownerOnly(auth);let row=await one(env,'SELECT * FROM results WHERE job_id=?',jobId);if(!row&&kind==='raw'){const job=await one(env,'SELECT run_id,object_id FROM jobs WHERE id=?',jobId),attempt=await one(env,'SELECT receipt_key FROM attempts WHERE job_id=?',jobId);if(job&&attempt?.receipt_key){const receipt=await getJSON(env,attempt.receipt_key),canonical='runs/'+job.run_id+'/'+job.object_id+'/raw.png';if(receipt.raw_key!==canonical)fail(409,'Raw receipt path mismatch');row={raw_key:canonical};}}if(!row)fail(404,'Asset not found');let assetKey=row[kind+'_key'];if(kind==='foreground'){const manifest=await getJSON(env,row.manifest_key);assetKey=manifest.foreground_key||row.final_key;}const object=await env.ARTIFACTS.get(assetKey);if(!object)fail(404,'Asset not found');return new Response(object.body,{headers:{'Content-Type':kind==='manifest'?'application/json':'image/png','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
+          if(url.pathname==='/api/image-info'){const jobId=url.searchParams.get('job');if(!safeId(jobId))fail(400,'Invalid job');await jobAccess(env,auth,jobId);const row=await one(env,'SELECT manifest_key FROM results WHERE job_id=?',jobId);if(!row)fail(404,'Image not ready');const m=await getJSON(env,row.manifest_key);return json({final_sha256:m.final_sha256,foreground_sha256:m.foreground_sha256||null,has_foreground:!!m.foreground_key,generation_mode:m.generation?.mode||'legacy',final:m.final,alpha:m.alpha,composition:m.composition,has_previous_assembly:!!m.previous_assemblies?.length});}
+          if(url.pathname==='/api/asset'){const jobId=url.searchParams.get('job'),kind=url.searchParams.get('kind')||'final';if(!safeId(jobId)||!['raw','final','foreground','manifest','previous'].includes(kind))fail(400,'Invalid asset');await jobAccess(env,auth,jobId);if(!['final','foreground'].includes(kind))ownerOnly(auth);let row=await one(env,'SELECT * FROM results WHERE job_id=?',jobId);if(!row&&kind==='raw'){const job=await one(env,'SELECT run_id,object_id FROM jobs WHERE id=?',jobId),attempt=await one(env,'SELECT receipt_key FROM attempts WHERE job_id=?',jobId);if(job&&attempt?.receipt_key){const receipt=await getJSON(env,attempt.receipt_key),canonical='runs/'+job.run_id+'/'+job.object_id+'/raw.png';if(receipt.raw_key!==canonical)fail(409,'Raw receipt path mismatch');row={raw_key:canonical};}}if(!row)fail(404,'Asset not found');let assetKey=row[kind+'_key'];if(kind==='previous'){const manifest=await getJSON(env,row.manifest_key);assetKey=manifest.previous_assemblies?.at(-1)?.final_key;if(!assetKey)fail(404,'Previous assembly not found');}if(kind==='foreground'){const manifest=await getJSON(env,row.manifest_key);assetKey=manifest.foreground_key||row.final_key;}const object=await env.ARTIFACTS.get(assetKey);if(!object)fail(404,'Asset not found');return new Response(object.body,{headers:{'Content-Type':kind==='manifest'?'application/json':'image/png','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}
         }else if(request.method==='POST'){
           const body=await bodyJSON(request);
+          if(url.pathname==='/api/reassemble')return json(await reassembleStored(env,body.jobId,auth));
           if(url.pathname==='/api/plan-live')return json(await createPlan(env,body,auth),202);
           if(url.pathname==='/api/planner-recover'){ownerOnly(auth);if(!safeId(body.requestId))fail(400,'Invalid planner ID');return json(await recoverPlan(env,body.requestId));}
           if(url.pathname==='/api/plan-mock'){generationRole(auth);return json(await planMock(body));}
@@ -280,4 +300,3 @@ export function createWorker(deps={}){return {
   }
 };}
 export default createWorker();
-
