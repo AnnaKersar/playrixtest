@@ -45,8 +45,20 @@ export function visualInstructions(v,category){
 }
 
 export function validateNarrativeSequence(objects){
- if(!objects.every(o=>typeof o.theme_role==='string'&&o.theme_role.trim().length>=12&&typeof o.composition_key==='string'&&o.composition_key.trim()))throw Error('Нужны шаги истории и различные композиции карточек.');
- const counts={};for(const o of objects)counts[o.production_category]=(counts[o.production_category]||0)+1;
- const canAlternate=Math.max(...Object.values(counts))<=Math.ceil(objects.length/2);
- for(let i=1;i<objects.length;i++){const a=objects[i-1],b=objects[i];if(a.composition_key===b.composition_key||a.semantic_family===b.semantic_family)throw Error('Соседние карточки повторяют композицию или тип предмета. Переработайте историю.');if(canAlternate&&a.production_category===b.production_category)throw Error('Типы C1–C4 должны чередоваться по истории, а не идти блоками.');}
+ if(!objects.every(o=>typeof o.theme_role==='string'&&o.theme_role.trim().length>=12&&typeof o.composition_key==='string'&&o.composition_key.trim()))throw Error('Нужны яркие моменты и описания композиций карточек.');
+ // Highlights have no chronological dependency. Curate existing objects, never relabel them.
+ let beam=[{order:[],used:0,score:0}];
+ for(let depth=0;depth<objects.length;depth++){
+  const next=[];
+  for(const state of beam)for(let i=0;i<objects.length;i++)if(!(state.used&(1<<i))){
+   const previous=objects[state.order.at(-1)],o=objects[i];
+   const penalty=previous?(previous.composition_key===o.composition_key?100:0)+(previous.production_category===o.production_category?10:0)+(previous.semantic_family===o.semantic_family?3:0):0;
+   next.push({order:[...state.order,i],used:state.used|(1<<i),score:state.score+penalty+Math.abs(depth-i)*.001});
+  }
+  next.sort((a,b)=>a.score-b.score);const seen=new Set();beam=next.filter(x=>{const key=x.used+':'+x.order.at(-1);if(seen.has(key))return false;seen.add(key);return true;}).slice(0,32);
+ }
+ const arranged=beam[0].order.map(i=>objects[i]);objects.splice(0,objects.length,...arranged);
+ const warnings=[];
+ for(let i=1;i<objects.length;i++)if(objects[i-1].composition_key===objects[i].composition_key)warnings.push('Проверьте различие композиций соседних карточек '+i+' и '+(i+1)+'.');
+ return warnings;
 }

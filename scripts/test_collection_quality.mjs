@@ -29,7 +29,11 @@ console.log('PASS living-creature ban, semantic diversity, 800 seeded category d
 
 const sequence=['C4','C1','C3','C4','C2','C1','C4','C3','C1','C4'].map((production_category,i)=>({...items[i],production_category,theme_role:'We noticed a meaningful trace at step '+i,composition_key:'layout-'+i}));
 validateNarrativeSequence(sequence);
-assert.throws(()=>validateNarrativeSequence(sequence.map((o,i)=>i===1?{...o,composition_key:sequence[0].composition_key}:o)),/композицию/);
-assert.throws(()=>validateNarrativeSequence(sequence.map((o,i)=>i===1?{...o,production_category:'C4'}:o)),/чередоваться/);
+const repeated=sequence.map((o,i)=>({...o,composition_key:'layout-'+Math.floor(i/2)}));
+const identities=new Set(repeated);validateNarrativeSequence(repeated);
+assert(repeated.every((o,i)=>i===0||o.composition_key!==repeated[i-1].composition_key));
+assert(repeated.every(o=>identities.has(o)));assert.equal(new Set(repeated).size,10);
+const sameFamily=sequence.map(o=>({...o,semantic_family:'instrument'}));assert.doesNotThrow(()=>validateNarrativeSequence(sameFamily));
 assert.match(collectionRules,/Every thematic category is a visit/);assert.match(collectionRules,/gold\/brass on yellow\/gold/i);
 console.log('PASS narrative beats, mixed production types, adjacent composition rejection and distinct neighboring hues; paid calls 0');
+
