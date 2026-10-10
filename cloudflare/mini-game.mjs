@@ -1,13 +1,15 @@
+import {libraryOriginal} from './reference-library.mjs';
 export const GAME_RUN='run_f73a3f8fda77497c541c8b29edcbce284bfab215e780a347';
 export async function miniGame(request,env){
  const url=new URL(request.url);
  if(!['GET','HEAD'].includes(request.method))return Response.json({error:'Read only'},{status:405});
  if(url.pathname==='/api/game/image'){
+  const reference=url.searchParams.get('reference');if(reference){const image=await libraryOriginal(env,reference);if(!image)return Response.json({error:'Reference missing'},{status:404});return new Response(request.method==='HEAD'?null:image.body,{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400'}});}
   const id=url.searchParams.get('job');
   if(typeof id!=='string'||!id.startsWith(GAME_RUN+'_')||!/^[a-zA-Z0-9_-]+$/.test(id))return Response.json({error:'Card outside game batch'},{status:404});
   const row=await env.DB.prepare("SELECT r.final_key FROM results r JOIN jobs j ON j.id=r.job_id WHERE j.id=? AND j.run_id=? AND j.status='complete'").bind(id,GAME_RUN).first();
   const image=row&&await env.ARTIFACTS.get(row.final_key);if(!image)return Response.json({error:'Image missing'},{status:404});
-  return new Response(request.method==='HEAD'?null:image.body,{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=3600'}});
+  return new Response(request.method==='HEAD'?null:image.body,{headers:{'Content-Type':'image/png','Cache-Control':'public, max-age=86400'}});
  }
  const run=await env.DB.prepare('SELECT frozen_key FROM runs WHERE id=?').bind(GAME_RUN).first();
  if(!run)return Response.json({error:'Game batch missing'},{status:503});
