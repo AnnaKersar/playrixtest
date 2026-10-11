@@ -9,7 +9,7 @@ import {archivePublic,archiveImport} from './experiment-archive.mjs';
 import {importArchiveSeed} from './archive-seed.mjs';
 import {ownerIdentity,ownerLogin,ownerLogout} from './owner-session.mjs';
 import {sha} from './provider.mjs';
-import {budgetState} from './budget.mjs';
+import {generationHistory,publicGuestBudget} from './generation-history.mjs';
 const json=(data,status=200,headers={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 async function throttle(env,ip,action,principal=''){
  const now=Math.floor(Date.now()/1000),minute=Math.floor(now/60),hour=Math.floor(now/3600),ipHash=(await sha(ip)).slice(0,32);
@@ -34,7 +34,7 @@ export async function sessionEndpoint(request,env){
  await env.DB.prepare('INSERT INTO anonymous_sessions VALUES (?,?,?)').bind(await sha(token),principalId,expires).run();
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
-const publicPaths=new Set(['/archive/economics.html','/archive-economics.mjs','/test-comparison.mjs','/collection-download.mjs','/card-edit-background.mjs','/card-edit-background.css','/card-editor','/card-editor/','/card-editor.html','/card-editor.js','/card-editor.css','/round-images.mjs','/game-results','/game-results/','/game-results.html','/game-results.js','/minigame','/minigame/','/minigame.html','/minigame.js','/minigame.css','/generation-background.mjs','/generation-background.css','/generator.js','/card-actions.mjs','/generation-progress.mjs','/generator-model.mjs','/collection-policy.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
+const publicPaths=new Set(['/generations','/generations/','/generations.html','/generations.js','/generations.css','/guest-budget.mjs','/archive/economics.html','/archive-economics.mjs','/test-comparison.mjs','/collection-download.mjs','/card-edit-background.mjs','/card-edit-background.css','/card-editor','/card-editor/','/card-editor.html','/card-editor.js','/card-editor.css','/round-images.mjs','/game-results','/game-results/','/game-results.html','/game-results.js','/minigame','/minigame/','/minigame.html','/minigame.js','/minigame.css','/generation-background.mjs','/generation-background.css','/generator.js','/card-actions.mjs','/generation-progress.mjs','/generator-model.mjs','/collection-policy.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
 const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
 // Cloudflare static assets canonicalize economics.html to the extensionless URL.
 for(const path of ['/archive/economics','/archive/economics/'])publicPaths.add(path);
@@ -51,6 +51,8 @@ export function createPublicGuestWorker(backend){return {
    }
    if(['/api/game/stats','/api/game/start','/api/game/answer'].includes(url.pathname))return gameStats(request,env);
    if(url.pathname==='/api/game'||url.pathname==='/api/game/image')return miniGame(request,env);
+   if(['/api/generations','/api/generations/image'].includes(url.pathname))return await generationHistory(request,env);
+   if(url.pathname==='/api/guest/budget')return await publicGuestBudget(request,env);
    if(url.pathname==='/api/generation-status'&&request.method==='GET'){
  if(!env.DB||!env.ARTIFACTS)return json({error:'Диагностика временно недоступна'},503);
  const run=await env.DB.prepare("SELECT id FROM runs WHERE mode='live' ORDER BY created_at DESC LIMIT 1").first();if(!run)return json({version:'public-generation-status/v1',cards:[]});
@@ -66,7 +68,6 @@ export function createPublicGuestWorker(backend){return {
    if(url.pathname==='/api/guest/session')return await sessionEndpoint(request,env);
    if(!env.DB)return json({error:'Guest backend unavailable'},503);
    const identity=await anonymousIdentity(request,env);if(!identity)return json({error:'Start an anonymous guest session; no account or login required'},401);
-   if(url.pathname==='/api/guest/budget'&&request.method==='GET'){const b=await budgetState(env);return json({scope:'all-visitors-lifetime',ceiling_nanodollars:b.guest_ceiling,remaining_nanodollars:b.guest_remaining,generation_enabled:false,blockers:b.live_blockers.length?['billing_reconciliation_or_configuration_required']:['public_safe_live_assets_not_approved']});}
    const allowed=request.method==='GET'?readPaths.has(url.pathname):request.method==='POST'&&writePaths.has(url.pathname);if(!allowed)return json({error:'Private/owner operation unavailable to public visitors'},403);
    if(request.method==='POST'&&request.headers.get('Origin')!==url.origin)return json({error:'Same-origin request required'},403);
    if(url.pathname==='/api/asset'&&(url.searchParams.get('kind')||'final')!=='final')return json({error:'Private source artifact unavailable'},403);

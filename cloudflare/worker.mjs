@@ -184,6 +184,7 @@ export async function processJob(env,jobId,deps={}){
     await processing.end('collection_policy_required');return;
   }
   let sheets=[],validatedHashes=[];if(run.mode==='live'){
+    if(run.principal_id!=='owner'){await query(env,"UPDATE jobs SET status='blocked' WHERE id=?",job.id).run();await processing.end('guest_paid_gate_closed');return;}
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live disabled before claim');
     if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');const {manifest}=await references(env,{manifestOnly:true});const prepared=await prepareSheets(env,manifest,job.id,processing);if(!prepared)return;sheets=prepared.sheets;validatedHashes=prepared.hashes;await processing.event('references_checked','succeeded');
   }
@@ -277,7 +278,7 @@ export function createWorker(deps={}){return {
       if(url.pathname==='/api/budget/reconcile'&&request.method==='POST')return json(await reconcilePreviousAttempts(env,auth));
       if(url.pathname==='/api/budget/unknown-reserve'&&request.method==='POST'){
         ownerOnly(auth);const body=await bodyJSON(request);if(body.reservation!==1000000000||body.acknowledgeUnknownCost!==true)fail(400,'Explicit $1 unknown-cost policy required');
-        const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND actual IS NULL AND receipt_key IS NULL AND status IN ('claimed','unknown','closed_reserved_unknown')");
+        const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND budget_scope='owner' AND principal_id='owner' AND actual IS NULL AND receipt_key IS NULL AND status IN ('claimed','unknown','closed_reserved_unknown')");
         let updated=0,skipped=0;for(const a of rows){
           const evidence=await accountingEvidence(env,a);if(evidence.receipt_present){skipped++;continue;}
           if(a.status==='closed_reserved_unknown'&&a.reservation===1000000000)continue;
@@ -405,7 +406,7 @@ export function createWorker(deps={}){return {
 
 async function ensureCardEdits(env){await query(env,'CREATE TABLE IF NOT EXISTS card_edits (source_job_id TEXT NOT NULL,edit_job_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,request_key TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL)').run();await query(env,'CREATE TABLE IF NOT EXISTS card_applied (source_job_id TEXT PRIMARY KEY,edit_job_id TEXT NOT NULL,applied_at TEXT NOT NULL)').run();}
 export async function reconcilePreviousAttempts(env,auth){
- ownerOnly(auth);const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND (status<>'complete' OR actual IS NULL) AND status NOT IN ('closed_reserved_unknown','cost_bound_exceeded')");
+ ownerOnly(auth);const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND budget_scope='owner' AND principal_id='owner' AND (status<>'complete' OR actual IS NULL) AND status NOT IN ('closed_reserved_unknown','cost_bound_exceeded')");
  const report={settled:0,closed_unknown:0,still_running:0,provider_calls:0};
  for(const a of rows){
   const job=await one(env,'SELECT * FROM jobs WHERE id=?',a.job_id);

@@ -3,7 +3,7 @@ import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
-let downloading=false;
+let downloading=false,ownerAccess=false;
 const $=id=>document.getElementById(id),key='card-studio-generator/v2';let saved=JSON.parse(localStorage.getItem(key)||'{}'),runId=null,jobs=[],refs=[],page=0,busy=false,ready=false,serial=0,selection=0;let selectedComparisonJob=null;const rendered=new Map(),persist=()=>localStorage.setItem(key,JSON.stringify(saved));
 async function api(path,body){let r;try{r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});}catch(e){throw Error('Не удалось получить ответ сайта · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}const raw=await r.text();let d;try{d=JSON.parse(raw);}catch{throw Error('Сайт вернул неожиданный ответ вместо JSON · HTTP '+r.status+' · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}if(!r.ok)throw Error((d.error||String(r.status))+' · '+path.split('?')[0]+(d.diagnostic?' · '+d.diagnostic:''));return d;}
 
@@ -49,7 +49,7 @@ function updateGenerationUI(){
   busy=!!saved.pending&&!saved.pending.paused;
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
-  $('launch').disabled=busy;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
+  $('launch').disabled=busy||!ownerAccess;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
   if(progress.message)text('launch-status',progress.message);
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
@@ -60,13 +60,13 @@ clearWaiting.onclick=async()=>{clearWaiting.disabled=true;try{await clearGenerat
 let refreshingRun=false,lastRunSignature='';
 window.addEventListener('generation-progress',updateGenerationUI);
 async function launch(){
-  if(busy)return;
+  if(busy||!ownerAccess)return;
   $('launch').disabled=true;
   try{const gate=await api('/api/preflight');if(gate.role==='owner'&&gate.budget?.live_blockers?.includes('attempt_billing_reconciliation_required')){text('launch-status','Завершаем учёт предыдущих попыток…');await api('/api/budget/reconcile',{});}await refreshReadiness({resume:!!readGeneration().pending?.planId});await startGeneration($('collection-name').value,$('producer-wishes').value,saved.advanced);updateGenerationUI();}
-  catch(e){text('launch-status',e.message);$('launch').disabled=false;}
+  catch(e){text('launch-status',e.message);$('launch').disabled=!ownerAccess;}
 }
 $('launch-form').onsubmit=e=>{e.preventDefault();launch();};
-async function refreshReadiness({resume=false}={}){const state=await api('/api/preflight');const reasons=[...(state.missing||[]),...(state.live_missing||[]),...(state.planner?.missing||[]),...(state.budget?.live_blockers||[]).filter(reason=>!resume||reason!=='attempt_billing_reconciliation_required')];if(!state.live_enabled)reasons.push('Генерация отключена');if(!state.planner?.live)reasons.push('Планировщик отключён');if(state.planner?.ready===false&&!state.planner.missing?.length)reasons.push('Планировщик не готов');ready=reasons.length===0;if(!ready)throw Error(reasons.length===1&&reasons[0]==='attempt_billing_reconciliation_required'?'Новая генерация приостановлена: незавершён учёт предыдущего ответа. Диагностика доступна в истории и во вкладке «Тест».':'Запуск недоступен: '+[...new Set(reasons)].join(', '));return state;}
+async function refreshReadiness({resume=false}={}){const response=await fetch('/api/preflight');if(!response.ok){ownerAccess=false;$('launch').disabled=true;throw Error('Платный гостевой запуск выключен. Остаток и условия указаны в блоке бюджета.');}const state=await response.json();ownerAccess=state.role==='owner';if(!ownerAccess){$('launch').disabled=true;throw Error('Платный гостевой запуск выключен.');}document.getElementById('guest-budget').hidden=true;const reasons=[...(state.missing||[]),...(state.live_missing||[]),...(state.planner?.missing||[]),...(state.budget?.live_blockers||[]).filter(reason=>!resume||reason!=='attempt_billing_reconciliation_required')];if(!state.live_enabled)reasons.push('Генерация отключена');if(!state.planner?.live)reasons.push('Планировщик отключён');if(state.planner?.ready===false&&!state.planner.missing?.length)reasons.push('Планировщик не готов');ready=reasons.length===0;if(!ready)throw Error(reasons.length===1&&reasons[0]==='attempt_billing_reconciliation_required'?'Новая генерация приостановлена: незавершён учёт предыдущего ответа. Диагностика доступна в истории и во вкладке «Тест».':'Запуск недоступен: '+[...new Set(reasons)].join(', '));return state;}
 const requestedRun=new URLSearchParams(location.search).get('run');if(requestedRun){saved.runId=requestedRun;persist();}updateGenerationUI();
 await showPage();text('launch-status','Проверяем подключение…');try{await refreshReadiness();text('launch-status','API готов. Укажите коллекцию и нажмите ЗАПУСТИТЬ.');}catch(e){text('launch-status',e.message);}
 try{refs=(await api('/api/references')).references;}catch{refs=[];}
