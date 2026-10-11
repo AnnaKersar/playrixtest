@@ -10,6 +10,7 @@ export function usageCost(usage) {
 export async function imageRequest(env,prompt,sheets,fetcher=fetch,options={}) {
   if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live provider disabled');
   if(sheets.length!==13)throw Error('Exactly 13 sheets required');
+  if(typeof prompt!=='string'||!prompt.trim()||prompt.length>32000)throw Object.assign(Error('Invalid image prompt: maximum 32000 characters; request not sent'),{code:'prompt_too_long'});
   const background=options.background||'transparent';if(!['transparent','opaque'].includes(background))throw Error('Invalid background mode');
   const size=options.size||'1376x1536';if(!['1376x1536','864x960'].includes(size))throw Error('Invalid requested image size');
   const body=new FormData();for(const[k,v]of Object.entries({model:IMAGE_MODEL,n:'1',size,quality:'medium',background,output_format:'png',prompt}))body.append(k,v);
@@ -20,7 +21,7 @@ export async function imageRequest(env,prompt,sheets,fetcher=fetch,options={}) {
   const response=await stage('provider_http_wait',()=>fetcher('https://api.openai.com/v1/images/edits',{method:'POST',headers:{Authorization:`Bearer ${env.OPENAI_API_KEY}`},body,redirect:'manual',signal:AbortSignal.timeout(240000)}),{},r=>({http_status:r.status,request_id:r.headers.get('x-request-id')}));
   if(response.status>=300&&response.status<400)throw Error('Provider redirect rejected');
   const requestId=response.headers.get('x-request-id');
-  if(!response.ok)throw Error(`Provider HTTP ${response.status}; request ${requestId||'unknown'}`);
+  if(!response.ok){let detail={};try{const data=await response.json();for(const key of ['code','type','param'])if(typeof data?.error?.[key]==='string'&&/^[a-zA-Z0-9_.\[\]-]{1,100}$/.test(data.error[key]))detail[key]=data.error[key];}catch{}throw Object.assign(Error(`Provider HTTP ${response.status}; request ${requestId||'unknown'}`),{provider_error:{http_status:response.status,request_id:requestId,...detail}});}
   const payload=await stage('provider_json_read',()=>response.json(),{request_id:requestId}),base64=payload?.data?.[0]?.b64_json;
   if(typeof base64!=='string'||base64.length>34*1024*1024||payload.data.length!==1)throw Error('Invalid image response');
   const png=await stage('provider_base64_decode',async()=>Buffer.from(base64,'base64'),{base64_characters:base64.length,request_id:requestId},bytes=>({output_bytes:bytes.length}));

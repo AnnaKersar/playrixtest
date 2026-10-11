@@ -90,7 +90,7 @@ async function step(){
       save(fresh);publish({phase:'complete',runId:p.runId,message:'Все '+jobs.length+' карточек готовы. Коллекция сохранена в истории.'});showNotification();return;
     }
     publish({phase:'running',runId:p.runId,message:imageProgress(jobs,draft.card_count)});
-    if(jobs.length&&jobs.every(job=>job.status==='complete'||plannerStopped.has(job.status)))throw Object.assign(Error('Часть карточек требует проверки. Откройте «Тест».'),{terminal:true});
+    if(jobs.length&&jobs.every(job=>job.status==='complete'||plannerStopped.has(job.status)))throw Object.assign(Error('Создание карточек остановилось. Причина доступна в «Диагностике карточек» и в истории генераций. Сохранённая попытка не отправляется повторно.'),{terminal:true});
   }catch(error){
     if(readGeneration().pending?.plannerKey!==p.plannerKey)return;
     if(error.status>=400&&error.status<500&&![408,429].includes(error.status))error.terminal=true;
