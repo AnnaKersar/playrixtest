@@ -86,7 +86,10 @@
                 "semantic_family",
                 "living_creatures",
                 "factual_checks",
-                "composition_key"
+                "composition_key",
+                "display_name",
+                "subject_semantic_key",
+                "theme_facet"
               ],
               "properties": {
                 "object_id": {
@@ -399,7 +402,7 @@
                 },
                 "composition_key": {
                   "enum": [
-                    "upright-offset",
+                    "upright-centered",
                     "low-diagonal",
                     "top-down-spread",
                     "horizontal-closeup",
@@ -410,6 +413,18 @@
                     "curved-silhouette",
                     "layered-detail"
                   ]
+                },
+                "display_name": {
+                  "type": "string",
+                  "description": "Short natural user-facing title in the user's language, normally 1-4 words. No technical ID, category prefix or English production brief. UI only, never text in artwork."
+                },
+                "subject_semantic_key": {
+                  "type": "string",
+                  "description": "Normalized recognizable focal subject/concept identity; semantic variants share the same key."
+                },
+                "theme_facet": {
+                  "type": "string",
+                  "description": "Distinct recognizable aspect of this collection theme, not a camera pose or composition."
                 }
               }
             }

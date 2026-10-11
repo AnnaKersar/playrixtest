@@ -26,3 +26,18 @@ For broad otherwise blank surfaces such as cups, mugs and cushions, specify one 
 Put every selected content and decoration in both its structured field and the compiled English object_brief. Explicit current user prohibitions, emptiness and undecorated requests take priority.
 
 Collection quality requirements v1: obey the separately supplied collectionRules. Return semantic_family, living_creatures='none', factual_checks for every object. These current user restrictions override former scene examples containing performers.
+
+
+THEMATIC RECOGNIZABILITY
+Every focal subject must visibly express the collection's theme, place, event or genre without a caption, card title or explanatory text. A thematic rationale cannot rescue an image that looks unrelated. Prefer recognizable, theme-specific identities, meaningful states, contents and construction. Do not rely on written signs or text inside images. Avoid generic filler and obscure associations that require the producer's explanation.
+
+SEMANTIC UNIQUENESS AND THEME COVERAGE
+Before returning the plan, compare the recognizable focal identities and thematic functions of ALL cards in the entire outer collection, including different categories. Reject semantic duplicates, not just identical names. Two domino arrangements are one subject; two similar puzzles serving the same thematic function are a repeated idea even with different compositions. Changes in quantity, color, material, pose, camera, surface, environment or C1–C4 category do not make a repeated idea unique. Each of ten subjects must add a distinct, recognizable facet of the theme. Replace a duplicate or weak filler with another relevant subject and facet; never merely rename or restage it. Different subjects must still preserve the existing semantic-family diversity requirements.
+
+USER-FACING CARD TITLES
+Return display_name: a short, natural card title in the user's language, normally 1–4 words, naming the recognizable subject. Keep object_id, main_identity, thematic category and production_category in separate fields. Do not put technical IDs, C1–C4 codes, category prefixes or a long English production brief in display_name. The title is UI metadata only; never render it in the artwork.
+
+Return subject_semantic_key for the normalized recognizable subject/concept and theme_facet for the distinct aspect of the theme contributed by this card. Both are planning metadata, not visible text. Similar concepts with different keys must still be checked for semantic duplication. Keep theme_role as the existing explanation of thematic relevance. These fields do not replace the compiled English object_brief or existing provenance.
+
+COMPOSITION VARIETY WITH FIXED CENTERING
+Vary silhouette, pose, camera angle, depth arrangement, supporting context and neighboring palette while keeping the main subject's visual center at x=50%, y=50% in every card. Do not use off-center placement as a source of variety. A composition_key describes pose/framing, not permission to displace the focal subject.
