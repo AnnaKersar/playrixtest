@@ -37,18 +37,24 @@ const palettes=['gold','purple','cyan','pink','green'];
 const patterns=['concentric-rings','stripes','polka-dots','checkerboard','honeycomb','triangles','chevrons','waves','scallops','crosses','stars','grid','herringbone','spirals','plain-gradient'];
 function randomFor(seed){let n=2166136261;for(const c of seed)n=Math.imul(n^c.charCodeAt(0),16777619)>>>0;return()=>{n=(Math.imul(n,1664525)+1013904223)>>>0;return n/4294967296;};}
 function shuffled(a,random){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
-export function categoryVisualSchedule(count,seed){
+export function categoryVisualSchedule(count,seed,subjects=[]){
  const random=randomFor(String(seed)),limits=Object.fromEntries(palettes.map(p=>[p,2+Math.floor(random()*2)]));
  for(const hue of shuffled(palettes,random)){if(Object.values(limits).reduce((a,b)=>a+b,0)>=count)break;limits[hue]=3;}
  if(count>Object.values(limits).reduce((a,b)=>a+b,0)||count>patterns.length)throw Error('Не хватает цветов без повторов: уменьшите категорию до 10 карточек или разделите её.');
  // Balanced first two passes, then optional third appearances; no independent per-card lottery.
  const remaining={...limits},deck=[];
  for(let i=0;i<count;i++){const choices=shuffled(palettes.filter(h=>remaining[h]>0&&h!==deck.at(-1)),random).sort((a,b)=>remaining[b]-remaining[a]);if(!choices.length)throw Error('Не удалось разделить соседние цвета.');const hue=choices[0];deck.push(hue);remaining[hue]--;}
+ if(subjects.length){
+  const forbidden=subjects.map(o=>{const t=String(o.brief||o.object_brief||o.name||'').split(/[.;]/)[0].toLowerCase();return new Set([...( /blue|cyan|teal|голуб|син|бирюз/.test(t)?['cyan']:[]),...(/purple|violet|lavender|фиолет|сирен/.test(t)?['purple']:[]),...(/pink|red|coral|розов|красн/.test(t)?['pink']:[]),...(/yellow|gold|orange|желт|золот|оранж/.test(t)?['gold']:[]),...(/green|зел[её]н/.test(t)?['green']:[])]);});
+  const left={...limits},assigned=[];function place(i){if(i===count)return true;for(const h of palettes.filter(h=>left[h]>0&&h!==assigned.at(-1)&&!forbidden[i]?.has(h)).sort((a,b)=>left[b]-left[a])){assigned.push(h);left[h]--;if(place(i+1))return true;left[h]++;assigned.pop();}return false;}
+  if(!place(0))throw Error('Не удалось подобрать разные цвета предметов и окружения без повторов. Переработайте палитру плана.');
+  deck.splice(0,deck.length,...assigned);
+ }
  const patternDeck=shuffled(patterns,random);
  return Array.from({length:count},(_,i)=>({version:COLLECTION_POLICY_VERSION,background_palette:deck[i],background_pattern:patternDeck[i],palette_repeat_limit:limits[deck[i]],pattern_repeat_limit:1}));
 }
 export function visualInstructions(v,category){
- if(category==='C4')return 'FROZEN CATEGORY VARIATION: Dominant environment/surface palette family '+v.background_palette+'. Keep subject material colors and clear contrast. C4 MUST use a detailed environment OR detailed scene-filling surface; no standard background, abstract gradient backdrop, rings, generic decorative pattern or solid backing. Do not render the assigned basic-background pattern in C4. Meaningful natural/architectural/field details form the context instead; preserve the approved clean illustrated style.';
+ if(category==='C4')return 'FROZEN CATEGORY VARIATION: Dominant environment/surface palette family '+v.background_palette+'. Keep subject material colors and clear contrast. C4 MUST use a simple casual environment OR simple scene-filling surface; no standard background, abstract gradient backdrop, rings, generic decorative pattern or solid backing. Do not render the assigned basic-background pattern in C4. Only one or two broad context forms identify the place; no small background details; preserve the approved clean illustrated style.';
  return 'FROZEN CATEGORY VARIATION: For C1-C3 the basic background dominant hue family MUST be '+v.background_palette+'; for C4 this is the dominant environment palette, while its detailed spatial environment remains mandatory. Use ONLY background pattern type '+v.background_pattern+' (plain-gradient means no pattern). Do not add musical-note motifs, rings or a second pattern type. This assignment is scheduled across the category: hue at most '+v.palette_repeat_limit+' appearances, each pattern type at most once. Keep the existing subtle pattern contrast and gradient. In C4 any assigned motif is subordinate and integrated into an appropriate environmental surface, not a flat decorative backing that replaces the location. For C2 choose a similar or contrasting surface hue compatible with this fixed background and subject readability; do not override the assigned background hue.';
 }
 
