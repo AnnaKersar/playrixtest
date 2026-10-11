@@ -46,11 +46,12 @@ function commitPending(patch,plannerKey){
 export async function startGeneration(name,wishes,advanced={}){
   const draft=collectionBrief(name,wishes,advanced);plannerPayload(draft);
   const identity=await api('/api/preflight');const existingPending=readGeneration().pending;const expected=existingPending?await stableId('planner_',identity.principalId,existingPending.plannerKey):null;
+  let rejectedPending=!!existingPending?.providerRejected;if(existingPending?.paused&&existingPending.planId&&(existingPending.principalId===identity.principalId||existingPending.expectedPlanId===expected)){const prior=await api('/api/planner?id='+encodeURIComponent(existingPending.planId));rejectedPending=!!prior.result?.provider_error;}
   const changedSession=!!existingPending&&((existingPending.principalId&&existingPending.principalId!==identity.principalId)||(existingPending.expectedPlanId&&existingPending.expectedPlanId!==expected));
   const start=()=>{
     const state=readGeneration();
-    if(changedSession&&state.pending?.plannerKey===existingPending.plannerKey){state.detached_attempts=[...(state.detached_attempts||[]),{...state.pending,detachedAt:Date.now(),reason:'different-session'}];state.pending=null;state.runId=null;}
-    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft,principalId:identity.principalId,startedAt:Date.now()};
+    if((changedSession||rejectedPending)&&state.pending?.plannerKey===existingPending.plannerKey){state.detached_attempts=[...(state.detached_attempts||[]),{...state.pending,detachedAt:Date.now(),reason:'different-session'}];state.pending=null;state.runId=null;}
+    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft:rejectedPending&&existingPending.revision?existingPending.draft:draft,...(rejectedPending&&existingPending.revision?{revision:existingPending.revision}:{}),principalId:identity.principalId,startedAt:Date.now()};
     state.pending.authRequired=false;state.pending.paused=false;state.name=name;state.wishes=wishes;state.advanced=advanced;save(state);
     publish({phase:'running',message:'Продолжаем генерацию…',runId:state.pending.runId||null});
   };
@@ -106,7 +107,7 @@ async function step(){
         const recovery=await api('/api/planner-recover',{requestId:p.planId});
         if(recovery.not_sent)throw Object.assign(Error('Запрос не отправлен. Откройте генератор для новой попытки.'),{terminal:true});
       }
-      if(plannerStopped.has(plan.status)||plannerStopped.has(plan.stage))throw Object.assign(Error('План остановлен: '+(plan.error||plan.stage||plan.status)),{terminal:true});
+      if(plannerStopped.has(plan.status)||plannerStopped.has(plan.stage))throw Object.assign(Error('План остановлен: '+(plan.result?.provider_error?.message||plan.error||plan.stage||plan.status)),{terminal:true,providerRejected:!!plan.result?.provider_error});
       return;
     }
     const result=await api('/api/run?compact=1&run='+encodeURIComponent(p.runId));
@@ -122,7 +123,7 @@ async function step(){
   }catch(error){
     if(readGeneration().pending?.plannerKey!==p.plannerKey)return;
     if(error.status>=400&&error.status<500&&![408,429].includes(error.status))error.terminal=true;
-    if(error.terminal)commitPending({paused:true,...(error.authRequired?{authRequired:true}:{})},p.plannerKey);
+    if(error.terminal)commitPending({paused:true,...(error.providerRejected?{providerRejected:true}:{}),...(error.authRequired?{authRequired:true}:{})},p.plannerKey);
     publish({phase:error.terminal?'paused':'running',runId:p.runId||null,message:error.terminal?error.message:'Проверка временно недоступна: '+error.message+'. Сохранённая попытка не отправляется повторно.'});
   }
 }
