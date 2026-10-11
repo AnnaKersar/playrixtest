@@ -5,7 +5,7 @@ import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
 import {generationContract} from '../cloudflare/generation-contract.mjs';
 import {validateUniqueSubjects,validatePlannerPresentation} from '../cloudflare/visitor-public/collection-policy.mjs';
 import {imagePayload} from '../cloudflare/visitor-public/studio/flow-model.mjs';
-import {parsePlan,strictSchema} from '../cloudflare/text-planner.mjs';
+import {parsePlan,strictSchema,boundPlannerSchema} from '../cloudflare/text-planner.mjs';
 assert.equal(PLANNER_VERSION,'narrative-collection-designer/v1.5');
 for(const h of ['CENTERING','FRAMING AND UI SAFETY','STYLE AND DETAIL','COLLECTION CONSISTENCY'])assert.ok(compilerCompositionRules.includes(h));
 assert.ok(artDirectionRule.includes(compilerCompositionRules));assert.ok(resultReviewInstructions.includes('Exclude cast shadows'));
@@ -27,3 +27,5 @@ assert.equal(parsePlan(payload,frozen).objects[0].name,'Мозаика');
 const legacy=structuredClone(plan);for(const k of ['display_name','subject_semantic_key','theme_facet'])delete legacy.collections[0].objects[0][k];legacy.collections[0].objects[0].composition_key='upright-offset';
 assert.equal(parsePlan({status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify(legacy)}]}]},{...frozen,planner_version:'narrative-collection-designer/v1.4'}).objects[0].name,'A jigsaw puzzle');
 console.log('PASS universal prompt blocks, pinned base preservation, C1-C4 centering, title/metadata transport, semantic/facet duplicates, new plan validation and legacy compatibility; paid calls 0');
+
+const metadataMismatch=structuredClone(plan);metadataMismatch.art_direction_version='supplemental-art-direction-version';metadataMismatch.art_direction_sha256='b'.repeat(64);const rawMismatch={status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify(metadataMismatch)}]}]},repaired=parsePlan(rawMismatch,frozen);assert.equal(repaired.art_direction_version,'base');assert.equal(repaired.art_direction_sha256,'a'.repeat(64));assert.equal(repaired.art_direction_metadata.corrected,true);assert.equal(repaired.art_direction_metadata.reported.version,'supplemental-art-direction-version');assert.equal(JSON.parse(rawMismatch.output[0].content[0].text).art_direction_sha256,'b'.repeat(64));assert.deepEqual(boundPlannerSchema(frozen).properties.art_direction_sha256.enum,['a'.repeat(64)]);console.log('PASS metadata bound to immutable input, model-reported mismatch retained, raw response unchanged; no provider call');
