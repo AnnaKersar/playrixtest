@@ -1,11 +1,11 @@
-export const GUEST_CAP=10000000000,PROJECT_CAP=100000000000;
+export const GUEST_CAP=20000000000,PROJECT_CAP=100000000000;
 export const GUEST_SOFT_SCOPE='guests-shared-soft-v1';
 export const guestPaidEnabled=env=>env.GUEST_PAID_GENERATION_ENABLED==='true';
-// A full-pool hold on unknown outcomes is an accounting policy, NOT a price bound.
+// A $10 hold on unknown outcomes is an accounting policy, NOT an actual charge.
 // Legacy guest reservations retain their conservative accounting; no ledger reset.
 const guest="(principal_id<>'owner' OR budget_scope IN ('guests-shared','guests-shared-soft-v1'))";
 const charged="CASE WHEN budget_scope='guests-shared-soft-v1' THEN COALESCE(actual,reservation) WHEN "+guest+" THEN MAX(COALESCE(actual,0),reservation) ELSE COALESCE(actual,reservation) END";
-const unresolved="((status<>'complete' OR actual IS NULL) AND status<>'closed_reserved_unknown') OR ("+guest+" AND actual IS NULL)";
+const unresolved="((status<>'complete' OR actual IS NULL) AND status<>'closed_reserved_unknown') OR ("+guest+" AND actual IS NULL AND status<>'closed_reserved_unknown')";
 export async function budgetState(env) {
  const b=await env.DB.prepare('SELECT * FROM budget WHERE id=1').first();
  const a=await env.DB.prepare("SELECT COALESCE(SUM("+charged+"),0) committed,SUM("+unresolved+") unresolved,COALESCE(SUM(CASE WHEN "+guest+" THEN "+charged+" ELSE 0 END),0) guests FROM attempts WHERE mode='live'").first();
@@ -15,7 +15,7 @@ export async function budgetState(env) {
 export function reservationFor(env,kind,principalId){
  if(principalId!=='owner'){
   if(!guestPaidEnabled(env))throw Object.assign(Error('Guest paid generation disabled'),{status:403});
-  return GUEST_CAP;
+  return 10000000000;
  }
  if(kind==='image')return 10000000000;
  const value=Number(env.TEXT_RESERVATION_NANODOLLARS);
@@ -25,7 +25,7 @@ export function reservationFor(env,kind,principalId){
 export async function claimPaid(env,jobId,reservation,principalId='owner'){
  const isGuest=principalId!=='owner';if(isGuest&&!guestPaidEnabled(env))return false;
  if(!Number.isSafeInteger(reservation)||reservation<=0)throw Error('Explicit positive reservation required');
- if(isGuest)reservation=GUEST_CAP;
+ if(isGuest)reservation=10000000000;
  const scope=isGuest?GUEST_SOFT_SCOPE:'owner';
  // One conditional INSERT is the lock and the idempotency claim. Unknown outcomes
  // never time out. A final usage-settled call may exceed the remaining soft budget.
@@ -33,5 +33,5 @@ export async function claimPaid(env,jobId,reservation,principalId='owner'){
  SELECT ?,'live','claimed',?,?,?,? WHERE EXISTS (SELECT 1 FROM budget b WHERE b.id=1 AND b.approved=1 AND b.historical_unknown=0
  AND NOT EXISTS (SELECT 1 FROM attempts WHERE mode='live' AND (${unresolved}))
  AND b.historical_known+COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live'),0)+?<=MIN(b.ceiling,100000000000))
- AND (?='owner' OR COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live' AND ${guest}),0)<10000000000)`).bind(jobId,reservation,new Date().toISOString(),principalId,scope,reservation,scope).run();return Boolean(r.meta.changes);
+ AND (?='owner' OR COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live' AND ${guest}),0)<${GUEST_CAP})`).bind(jobId,reservation,new Date().toISOString(),principalId,scope,reservation,scope).run();return Boolean(r.meta.changes);
 }
