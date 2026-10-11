@@ -40,7 +40,7 @@ try{
   for(let i=0;i<80;i++){if(await ev(ready))break;await new Promise(r=>setTimeout(r,100));}assert(await ev(ready),'Page not ready '+path);
   for(const width of [1280,768,390,320]){await viewport(width);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Overflow '+path+' '+width);}
   if(path==='/generations'){assert(await ev('document.body.textContent.includes("Ошибка")'));await screenshot('generations-mobile');await viewport(1280);await screenshot('generations-desktop');}
-  if(path==='/'){assert(await ev('document.querySelector("#launch").disabled'));assert(await ev('document.querySelector("#guest-budget-quote").textContent.includes("недоступна")'));await screenshot('guest-budget-mobile');}
+  if(path==='/'){assert(await ev('document.querySelector("#launch").disabled'));assert(await ev('document.querySelector("#guest-budget-quote")===null && document.querySelector("#guest-budget").children.length===1'));await screenshot('guest-budget-mobile');}
   if(path==='/minigame.html')assert(await ev('Array.from(document.links).find(a=>a.pathname.endsWith("game-results.html")).getBoundingClientRect().top<document.querySelector("#game-grid").getBoundingClientRect().top'));
  }
  assert.equal(paidCalls,0);console.log('PASS generations, guest budget, results before play; 1280/768/390/320px no horizontal overflow; zero paid calls');
