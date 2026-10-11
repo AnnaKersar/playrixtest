@@ -15,8 +15,8 @@ assert(Math.abs(scenario(11).variable-(11*.125+2*.53875))<1e-8);
 for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary),{cards:[38,22,16][i],collections:[40,30,20][i]});}
 assert.equal(breakEven(17535,{...DEFAULTS,cost:1000}).cards,null);
 let calls=0;const worker=createPublicGuestWorker(()=>{throw Error('Private backend unexpectedly called');});
-for(const path of ['/archive/economics.html','/archive-economics.mjs']){const r=await worker.fetch(new Request('https://example.com'+path),{PUBLIC_ASSETS:{fetch:async()=>{calls++;return new Response('public');}}});assert.equal(r.status,200);assert(r.headers.get('Content-Security-Policy').includes("script-src 'self'"));}
-assert.equal(calls,2);
+for(const path of ['/archive/economics.html','/archive/economics','/archive/economics/','/archive-economics.mjs']){const r=await worker.fetch(new Request('https://example.com'+path),{PUBLIC_ASSETS:{fetch:async()=>{calls++;return new Response('public');}}});assert.equal(r.status,200);assert(r.headers.get('Content-Security-Policy').includes("script-src 'self'"));}
+assert.equal(calls,4);
 assert.equal((await worker.fetch(new Request('https://example.com/api/owner/archive/seed'),{})).status,401);
 console.table(TARGETS.map(n=>{const s=scenario(n);return {newCards:n,newUSD:s.variable.toFixed(2),withRD:s.total.toFixed(2),perCard:s.perCard.toFixed(2),juniorDifference:s.grades[0].difference.toFixed(2),middleDifference:s.grades[1].difference.toFixed(2),seniorDifference:s.grades[2].difference.toFixed(2)};}));
 console.log('PASS simple economics: six exact scenarios, salary grades, signed differences, stepped break-even, partial collection, invalid inputs, zero ongoing producer QA, anonymous assets and owner restrictions.');
