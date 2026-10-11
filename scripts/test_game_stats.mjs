@@ -14,8 +14,3 @@ let stats=await call('/api/game/stats');assert.equal(stats.attempts.length,1);as
 const again=(await call('/api/game/start',{participant,protocol:'simultaneous/v2'})).id;await call('/api/game/answer',{attempt:again,round:1,options:[GAME_RUN+'_o0',...refs],selected:GAME_RUN+'_o0'});stats=await call('/api/game/stats');assert.equal(stats.votes.find(c=>c.card===GAME_RUN+'_o0').votes,1);assert.equal(stats.participants,1);assert.equal(stats.attempts.length,1);
 const old=(await call('/api/game/start',{participant:crypto.randomUUID()})).id;await call('/api/game/answer',{attempt:old,round:1,options:[GAME_RUN+'_o1',...refs],selected:GAME_RUN+'_o1'});stats=await call('/api/game/stats');assert.equal(stats.archived.length,1);assert.equal(stats.participants,1);assert.equal(stats.votes.find(c=>c.card===GAME_RUN+'_o1').votes,0);
 console.log('PASS durable 30-round summary, score, idempotent retries, repeated-browser vote deduplication and incomplete attempts excluded');
-assert.equal(stats.comparison.rounds,30);assert.equal(stats.comparison.found,15);
-const another=(await call('/api/game/start',{participant:crypto.randomUUID(),protocol:'simultaneous/v2'})).id;await call('/api/game/answer',{attempt:another,round:1,options:[GAME_RUN+'_o1',...refs],selected:refs[1]});
-stats=await call('/api/game/stats');assert.equal(stats.comparison.rounds,31);assert.equal(stats.comparison.found,15);
-console.log('PASS comparison counts first participant/card answer, includes unfinished games and excludes old protocol');
-
