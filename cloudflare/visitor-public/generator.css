@@ -52,3 +52,5 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 #automatic-comparison[hidden]{display:none!important}
 
 #card-grid .plan-card-slot .card-actions{min-height:24px}
+
+#card-grid .plan-subject-label{font-size:clamp(16px,1.35vw,23px)}

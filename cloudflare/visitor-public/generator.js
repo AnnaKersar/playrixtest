@@ -47,7 +47,7 @@ $('previous').onclick=()=>{if(planReview.active){planReview.turnPage(-1);return;
 const wait=()=>new Promise(resolve=>setTimeout(resolve,5000));
 const planReview=createPlanReview({grid:$('card-grid'),onPage:d=>{text('collection-title',d.name);text('collection-category','Категория: '+d.categories.join(' / '));text('collection-status','План · '+d.count+' карточек · страница '+(d.index+1)+' / '+d.pages);$('previous').disabled=d.index===0;$('next').disabled=d.index+1>=d.pages;$('download-collection').disabled=true;},approve:async()=>{await approveGenerationPlan();updateGenerationUI();},revise:async(text,ids)=>{await reviseGenerationPlan(text,ids);updateGenerationUI();}});$('launch-form').after(planReview.panel);
 function updateGenerationUI(){
-  saved=readGeneration();const progress=generationProgress();planReview.update(saved.pending);$('card-grid').hidden=false;$('automatic-comparison').hidden=planReview.active;
+  saved=readGeneration();const progress=generationProgress(),wasReview=planReview.active;planReview.update(saved.pending);if(wasReview&&!planReview.active){lastRunSignature='';void showPage();}$('card-grid').hidden=false;$('automatic-comparison').hidden=planReview.active;
   busy=!!saved.pending&&!saved.pending.paused;
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   stopButton.hidden=!(saved.pending||jobs.some(j=>!['complete','cancelled'].includes(j.status)));clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
