@@ -1,5 +1,5 @@
 import {collectionPNG,fileName} from '/collection-download.mjs';
-import {startGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
+import {startGeneration,stopCurrentGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
@@ -48,13 +48,16 @@ function updateGenerationUI(){
   saved=readGeneration();const progress=generationProgress();
   busy=!!saved.pending&&!saved.pending.paused;
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
-  clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
+  stopButton.hidden=!(saved.pending||jobs.some(j=>!['complete','cancelled'].includes(j.status)));clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
   $('launch').disabled=busy||!generationAccess;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
   if(progress.message)text('launch-status',progress.message==='Часть карточек требует проверки. Откройте «Тест».'?'Создание карточек остановилось. Подробности — в диагностике и истории генераций.':progress.message==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Нажмите «ЗАПУСТИТЬ», чтобы создать новую коллекцию в текущей сессии. Прежняя попытка сохранится в истории.':progress.message);
  const ownerLink=document.querySelector('.owner-link');if(ownerLink){const needsLogin=!!saved.pending?.authRequired||progress.message==='Not authorized for this resource';ownerLink.textContent=needsLogin?'Войти и продолжить сохранённую попытку':'Вход владельца';ownerLink.classList.toggle('action',needsLogin);}
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
 }
+const stopButton=node('button','СТОП');stopButton.type='button';stopButton.id='stop-generation';stopButton.hidden=true;
+$('launch-form').insertBefore(stopButton,$('launch'));
+stopButton.onclick=async()=>{stopButton.disabled=true;try{await stopCurrentGeneration();await refreshReadiness();updateGenerationUI();}catch(e){text('launch-status',e.message);}finally{stopButton.disabled=false;}};
 const clearWaiting=node('button','Снять зависшее ожидание');clearWaiting.type='button';clearWaiting.id='clear-generation-waiting';
 $('launch-form').insertBefore(clearWaiting,$('launch'));
 clearWaiting.onclick=async()=>{clearWaiting.disabled=true;try{await clearGenerationWaiting();updateGenerationUI();}catch(e){text('launch-status',e.message);}finally{clearWaiting.disabled=false;}};

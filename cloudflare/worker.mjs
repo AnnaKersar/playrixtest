@@ -1,3 +1,4 @@
+import {stopGeneration} from './stop-generation.mjs';
 import {correctionStage,correctionPrompt} from './card-correction-policy.mjs';
 import {crc32} from 'node:zlib';
 import {prepareSheets} from './reference-sheets.mjs';
@@ -208,7 +209,7 @@ export async function processJob(env,jobId,deps={}){
     const receipt={raw_key:rawKey,raw_sha256:await sha(answer.png),usage:answer.usage,request_id:answer.requestId,cost};
     await processing.stage('receipt_r2_write',()=>putJSON(env,receiptKey,receipt));
     await processing.stage('receipt_d1_status',async()=>{
-    await query(env,"UPDATE attempts SET status='received',receipt_key=? WHERE job_id=?",receiptKey,job.id).run();
+    await query(env,"UPDATE attempts SET status=CASE WHEN status='closed_reserved_unknown' THEN status ELSE 'received' END,receipt_key=? WHERE job_id=?",receiptKey,job.id).run();
     // The provider receipt is durable: settle known usage before a separate CPU-heavy finalization job.
     if(cost!==null){await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=? WHERE job_id=?",cost,cost,job.id).run();}
     });
@@ -219,7 +220,7 @@ export async function processJob(env,jobId,deps={}){
     await processing.journal('processing-failed',invoked?'provider_or_storage_failed':'provider_not_sent',{at:new Date().toISOString(),elapsed_ms:Date.now()-started,error:safe.message,error_code:safe.code,...(error.provider_error?{provider_error:error.provider_error}:{}),outcome:invoked?'unknown-or-durable-receipt':'not-sent'});
     // A finalization/queue failure must not erase already settled billing or the claim guard.
     await processing.stage('failure_d1_status',()=>env.DB.batch([
-      query(env,"UPDATE attempts SET status=CASE WHEN actual IS NULL THEN 'unknown' ELSE status END,error=? WHERE job_id=?",safe.message,job.id),
+      query(env,"UPDATE attempts SET status=CASE WHEN actual IS NULL AND status<>'closed_reserved_unknown' THEN 'unknown' ELSE status END,error=? WHERE job_id=?",safe.message,job.id),
       query(env,"UPDATE jobs SET status='needs_review' WHERE id=? AND status<>'complete'",job.id)
     ]));
     await processing.end('needs_review',error);
@@ -288,6 +289,7 @@ export function createWorker(deps={}){return {
         }
         return json({updated,skipped,reservation:1000000000,actual_cost:null,provider_calls:0});
       }
+      if(url.pathname==='/api/stop-generation'&&request.method==='POST')return json(await stopGeneration(env,auth,await bodyJSON(request)));
       if(url.pathname==='/api/cancel-run'&&request.method==='POST'){
         ownerOnly(auth);const body=await bodyJSON(request);if(!safeId(body.runId))fail(400,'Invalid run');
         await runAccess(env,auth,body.runId);

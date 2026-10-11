@@ -15,6 +15,17 @@ async function api(path,body){
   if(!response.ok)throw Object.assign(Error(response.status===401||data.error==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Гость может запустить свою новую коллекцию кнопкой «ЗАПУСТИТЬ». Для просмотра прежней попытки владельца нужен вход владельца.':data.error||'HTTP '+response.status),{status:response.status,authRequired:response.status===401||data.error==='Not authorized for this resource'});
   return data;
 }
+export async function stopCurrentGeneration(){
+ const initial=readGeneration();if(initial.pending){initial.pending.paused=true;save(initial);}
+ const stop=async()=>{
+  const state=readGeneration(),p=state.pending;
+  const runId=p?(p.runId||p.expectedRunId):state.runId,planId=p?.planId||p?.expectedPlanId;
+  await api('/api/stop-generation',{...(runId?{runId}:{}),...(planId?{planId}:{})});
+  if(p)state.detached_attempts=[...(state.detached_attempts||[]),{...p,detachedAt:Date.now(),reason:'user-stopped'}];
+  state.pending=null;save(state);publish({phase:'idle',runId:runId||null,message:'Генерация остановлена. Готовые карточки сохранены. Можно запустить новую коллекцию.'});
+ };
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',stop);else await stop();
+}
 export function generationProgress(){return readProgress();}
 export async function clearGenerationWaiting(){
  const clear=()=>{
