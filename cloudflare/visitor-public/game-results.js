@@ -1,6 +1,6 @@
 import {testComparison} from '/test-comparison.mjs';
 const $=id=>document.getElementById(id);let data,cards,refs;
-async function read(url){const r=await fetch(url);const d=await r.json();if(!r.ok)throw Error(d.error||'Результаты пока недоступны');return d;}
+async function read(url){const r=await fetch(url);let d;try{d=await r.json()}catch{throw Error('Сервер статистики временно недоступен · HTTP '+r.status)}if(!r.ok)throw Error(d.error||'Результаты пока недоступны');return d;}
 function table(headers,rows){const t=document.createElement('table'),h=t.createTHead().insertRow();for(const title of headers){const th=document.createElement('th');th.textContent=title;h.append(th);}const b=t.createTBody();for(const row of rows){const tr=b.insertRow();for(const v of row){const td=tr.insertCell();if(v instanceof Node)td.append(v);else td.textContent=String(v);}}return t;}
 function render(){const counts=new Map(data.votes.map(v=>[v.card,v])),all=[...cards.map(c=>({...c,ours:true})),...refs.filter(r=>counts.has(r.id)).map(r=>({id:r.id,image:'/api/references/image?id='+encodeURIComponent(r.id),name:r.name,ours:false}))];const filter=$('filter').value;
 renderComparison();
