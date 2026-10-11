@@ -5,7 +5,7 @@ import {plannerStopped,plannerProgress,imageProgress} from './generation-progres
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
 let downloading=false,generationAccess=false;
 const $=id=>document.getElementById(id),key='card-studio-generator/v2';let saved=JSON.parse(localStorage.getItem(key)||'{}'),runId=null,jobs=[],refs=[],page=0,busy=false,ready=false,serial=0,selection=0;let selectedComparisonJob=null;const rendered=new Map(),persist=()=>localStorage.setItem(key,JSON.stringify(saved));
-async function api(path,body){let r;try{r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});}catch(e){throw Error('Не удалось получить ответ сайта · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}const raw=await r.text();let d;try{d=JSON.parse(raw);}catch{throw Error('Сайт вернул неожиданный ответ вместо JSON · HTTP '+r.status+' · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}if(!r.ok)throw Error((d.error||String(r.status))+' · '+path.split('?')[0]+(d.diagnostic?' · '+d.diagnostic:''));return d;}
+async function api(path,body){let r;try{r=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});}catch(e){throw Error('Не удалось получить ответ сайта · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}const raw=await r.text();let d;try{d=JSON.parse(raw);}catch{throw Error('Сайт вернул неожиданный ответ вместо JSON · HTTP '+r.status+' · '+path.split('?')[0]+'. Попытка сохранена; повторное нажатие проверит тот же запрос.');}if(!r.ok)throw Error(((r.status===401||r.status===403)?'Войдите как владелец для доступа к сохранённой попытке':d.error||String(r.status))+' · '+path.split('?')[0]+(d.diagnostic?' · '+d.diagnostic:''));return d;}
 
 function text(id,value){$(id).textContent=value;}function node(tag,label){const el=document.createElement(tag);if(label)el.textContent=label;return el;}
 $('collection-name').value=saved.name||'';$('producer-wishes').value=saved.wishes||'';
@@ -50,7 +50,8 @@ function updateGenerationUI(){
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
   $('launch').disabled=busy||!generationAccess;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
-  if(progress.message)text('launch-status',progress.message);
+  if(progress.message)text('launch-status',progress.message==='Not authorized for this resource'?'Текущая сессия не имеет доступа к сохранённой попытке. Войдите как владелец или снимите прежнее ожидание перед новой коллекцией.':progress.message);
+ const ownerLink=document.querySelector('.owner-link');if(ownerLink){const needsLogin=!!saved.pending?.authRequired||progress.message==='Not authorized for this resource';ownerLink.textContent=needsLogin?'Войти и продолжить сохранённую попытку':'Вход владельца';ownerLink.classList.toggle('action',needsLogin);}
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
 }

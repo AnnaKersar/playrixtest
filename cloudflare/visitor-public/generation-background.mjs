@@ -12,7 +12,7 @@ const pollGateKey='card-studio-generation-poll/v1',POLL_MS=10000;
 async function api(path,body){
   const response=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
   const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{throw Object.assign(Error('Сайт вернул не JSON · HTTP '+response.status),{status:response.status||503});}
-  if(!response.ok)throw Object.assign(Error(data.error||'HTTP '+response.status),{status:response.status});
+  if(!response.ok)throw Object.assign(Error(response.status===401||response.status===403?'Текущая сессия не имеет доступа к сохранённой попытке. Войдите как владелец, чтобы продолжить её. Для отдельной новой коллекции сначала нажмите «Снять зависшее ожидание».':data.error||'HTTP '+response.status),{status:response.status,authRequired:response.status===401||response.status===403});
   return data;
 }
 export function generationProgress(){return readProgress();}
@@ -37,7 +37,7 @@ export async function startGeneration(name,wishes,advanced={}){
   const start=()=>{
     const state=readGeneration();
     if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft,startedAt:Date.now()};
-    state.pending.paused=false;state.name=name;state.wishes=wishes;state.advanced=advanced;save(state);
+    state.pending.authRequired=false;state.pending.paused=false;state.name=name;state.wishes=wishes;state.advanced=advanced;save(state);
     publish({phase:'running',message:'Продолжаем генерацию…',runId:state.pending.runId||null});
   };
   if(navigator.locks)await navigator.locks.request('playrix-generation-step',start);else start();
@@ -91,7 +91,7 @@ async function step(){
   }catch(error){
     if(readGeneration().pending?.plannerKey!==p.plannerKey)return;
     if(error.status>=400&&error.status<500&&![408,429].includes(error.status))error.terminal=true;
-    if(error.terminal)commitPending({paused:true},p.plannerKey);
+    if(error.terminal)commitPending({paused:true,...(error.authRequired?{authRequired:true}:{})},p.plannerKey);
     publish({phase:error.terminal?'paused':'running',runId:p.runId||null,message:error.terminal?error.message:'Проверка временно недоступна: '+error.message+'. Сохранённая попытка не отправляется повторно.'});
   }
 }
