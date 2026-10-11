@@ -1,5 +1,6 @@
+import {createPlanReview} from './plan-review.mjs';
 import {collectionPNG,fileName} from '/collection-download.mjs';
-import {startGeneration,stopCurrentGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
+import {startGeneration,approveGenerationPlan,reviseGenerationPlan,stopCurrentGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
@@ -44,8 +45,9 @@ function showQueueDiagnostics(){diagnosticList.replaceChildren(...jobs.map(j=>{c
 async function loadRun(id){if(runId!==id){selectedComparisonJob=null;++selection;$('comparison-hint').hidden=false;$('selected-card-info').hidden=true;}runId=id;const d=await api('/api/run?compact=1&run='+encodeURIComponent(id));jobs=d.jobs;$('download-collection').disabled=downloading||!jobs.length||jobs.some(j=>j.status!=='complete');const signature=id+'|'+jobs.map(j=>j.id+':'+j.status).join('|');const changed=signature!==lastRunSignature;lastRunSignature=signature;showQueueDiagnostics();page=Math.min(page,Math.max(0,Math.ceil(jobs.length/PAGE_SIZE)-1));text('collection-title',d.run.name);text('collection-category','Категория: '+((d.run.category_names||[]).join(' / ')||'не сохранена в старой попытке'));text('collection-status','Готово '+jobs.filter(j=>j.status==='complete').length+' / '+jobs.length+' · страницы по 10 карточек');if(changed)await showPage();}
 $('previous').onclick=()=>{page--;showPage();};$('next').onclick=()=>{page++;showPage();};
 const wait=()=>new Promise(resolve=>setTimeout(resolve,5000));
+const planReview=createPlanReview({approve:async()=>{await approveGenerationPlan();updateGenerationUI();},revise:async(text,ids)=>{await reviseGenerationPlan(text,ids);updateGenerationUI();}});$('card-grid').before(planReview.panel);
 function updateGenerationUI(){
-  saved=readGeneration();const progress=generationProgress();
+  saved=readGeneration();const progress=generationProgress();planReview.update(saved.pending);$('card-grid').hidden=!planReview.panel.hidden;
   busy=!!saved.pending&&!saved.pending.paused;
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   stopButton.hidden=!(saved.pending||jobs.some(j=>!['complete','cancelled'].includes(j.status)));clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';

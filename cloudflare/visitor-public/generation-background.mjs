@@ -57,6 +57,22 @@ export async function startGeneration(name,wishes,advanced={}){
   if(navigator.locks)await navigator.locks.request('playrix-generation-step',start);else start();
   tick();
 }
+
+export async function approveGenerationPlan(){
+ const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');plannedCollection(p.draft,p.planResult);p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',approve);else approve();tick();
+}
+export async function reviseGenerationPlan(instruction,rejectedObjectIds=[]){
+ instruction=String(instruction||'').trim();if((!instruction&&!rejectedObjectIds.length)||instruction.length>4000)throw Error('Опишите изменения: до 4000 символов.');
+ const revise=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||!p.planId||p.runId||p.planApproved)throw Error('Изменить план можно до запуска карточек.');
+ const draft=structuredClone(p.draft);draft.collection_settings.categories.forEach(c=>{c.name='';});
+ const presets=JSON.parse(draft.preset_collections);presets.categories.forEach(c=>{c.name='Use the revised category name from the prior plan, unless the user requests a change';});draft.preset_collections=JSON.stringify(presets);
+ s.plan_history=[...(s.plan_history||[]),{planId:p.planId,plan:p.planResult,instruction,at:Date.now()}].slice(-10);
+ s.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:p.name,wishes:p.wishes,draft,principalId:p.principalId,startedAt:Date.now(),revision:{plan_id:p.planId,instruction,rejected_object_ids:rejectedObjectIds},planApproved:false};
+ save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'Уточняем текстовый план. Изображения ещё не создаются.'});};
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',revise);else revise();tick();
+}
+
 async function existing(path){try{return await api(path);}catch(error){if(error.status===404)return null;throw error;}}
 async function stableId(prefix,principal,key){
   const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(principal+'|'+key));
@@ -70,7 +86,7 @@ async function step(){
     if(!p.expectedPlanId||!p.expectedRunId){const identity=await api('/api/preflight');p.expectedPlanId=await stableId('planner_',identity.principalId,p.plannerKey);p.expectedRunId=await stableId('run_',identity.principalId,p.runKey);commitPending({expectedPlanId:p.expectedPlanId,expectedRunId:p.expectedRunId},p.plannerKey);}
     if(!p.planId){
       publish({phase:'running',message:plannerProgress({stage:'queued'},Date.now()-p.startedAt)});
-      const response=await api('/api/plan-live',{...plannerPayload(draft),requestId:p.plannerKey,approval:'I approve one paid planner attempt'});
+      const response=await api('/api/plan-live',{...plannerPayload(draft),requestId:p.plannerKey,...(p.revision?{revision:p.revision}:{}),approval:'I approve one paid planner attempt'});
       commitPending({planId:response.requestId},p.plannerKey);return;
     }
     if(!p.runId){
@@ -78,7 +94,8 @@ async function step(){
       publish({phase:'running',message:plannerProgress(plan,Date.now()-p.startedAt)});
       if(plan.result?.validation_error)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
-        if(!p.planResult)commitPending({planResult:plan.result.plan},p.plannerKey);
+        if(!p.planResult){commitPending({planResult:plan.result.plan,planApproved:false},p.plannerKey);publish({phase:'review',message:'План готов. Проверьте темы и предметы перед созданием карточек.'});return;}
+        if(!p.planApproved){publish({phase:'review',message:'План готов. Можно изменить его текстом или подтвердить генерацию карточек.'});return;}
         let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
         publish({phase:'running',message:'План готов · '+plan.result.plan.collections.map(c=>c.name).join(' / ')+' · передаём карточки в очередь'});
         const response=await api('/api/runs',{...imagePayload(approved),requestId:p.runKey,planner_request_id:p.planId,mode:'live',approval:'I approve one paid attempt per object'});
@@ -114,7 +131,7 @@ async function tick(){
   if(ticking)return;ticking=true;
   try{
     const check=async()=>{
-      const state=readGeneration();if(!state.pending||state.pending.paused)return;
+      const state=readGeneration();if(!state.pending||state.pending.paused||state.pending.planResult&&!state.pending.planApproved&&!state.pending.runId)return;
       let gate={};try{gate=JSON.parse(localStorage.getItem(pollGateKey)||'{}');}catch{}
       const now=Date.now();if(gate.key===state.pending.plannerKey&&now-gate.at<POLL_MS)return;
       localStorage.setItem(pollGateKey,JSON.stringify({key:state.pending.plannerKey,at:now}));

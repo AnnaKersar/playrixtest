@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {loadPlannerRevision,validatePlannerRevision} from '../cloudflare/planner-revision.mjs';
+const original={collections:[{name:'Кино',objects:[{object_id:'a',main_identity:'Helmet',subject_semantic_key:'helmet',display_name:'Шлем'},{object_id:'b',main_identity:'Radio',subject_semantic_key:'radio',display_name:'Рация'}]}]};
+const dbrow={principal_id:'guest-a',status:'complete',result_key:'result',input_key:'input'};
+const env={DB:{prepare(){return {bind(){return {async first(){return dbrow;}};}};}},ARTIFACTS:{async get(key){return {async json(){return key==='result'?{plan:original}:{input:{revision:{excluded_subjects:[{main_identity:'Suitcase',subject_semantic_key:'suitcase'}]}}};}};}}};
+const auth={principalId:'guest-a'};
+assert.equal(await loadPlannerRevision(env,undefined,auth),null);
+const revision=await loadPlannerRevision(env,{plan_id:'planner_a',instruction:'',rejected_object_ids:['a']},auth);
+assert.equal(revision.excluded_subjects.length,2);
+assert(revision.instruction.includes('Replace'));
+assert.equal(revision.prior_plan,original);
+assert.throws(()=>validatePlannerRevision(original,revision),/стоп-листа/);
+validatePlannerRevision({collections:[{objects:[{main_identity:'Microphone',subject_semantic_key:'microphone'}]}]},revision);
+assert.throws(()=>validatePlannerRevision({collections:[{objects:[{main_identity:'New case',subject_semantic_key:'SUITCASE'}]}]},revision),/стоп-листа/);
+await assert.rejects(()=>loadPlannerRevision(env,{plan_id:'planner_a',instruction:'',rejected_object_ids:['a']},{principalId:'guest-b'}),e=>e.status===403);
+await assert.rejects(()=>loadPlannerRevision(env,{plan_id:'planner_a',instruction:'',rejected_object_ids:['missing']},auth),e=>e.status===400);
+await assert.rejects(()=>loadPlannerRevision(env,{plan_id:'planner_a',instruction:'',rejected_object_ids:[]},auth),e=>e.status===400);
+await assert.rejects(()=>loadPlannerRevision(env,{plan_id:'planner_a',instruction:'x'.repeat(4001)},auth),e=>e.status===400);
+console.log('PASS optional feedback, cumulative no-list, rejected subject validation, ownership, invalid input; no provider calls.');
+
