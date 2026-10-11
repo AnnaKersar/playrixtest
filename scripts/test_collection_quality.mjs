@@ -1,3 +1,4 @@
+import {plannerPrompt} from '../cloudflare/planner-contract.mjs';
 import assert from 'node:assert/strict';
 import {categoryVisualSchedule,validateCategoryInventory,validateNarrativeSequence,collectionRules} from '../cloudflare/visitor-public/collection-policy.mjs';
 import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
@@ -18,7 +19,7 @@ assert.throws(()=>categoryVisualSchedule(16,'test'),/Не хватает/);
 for(const category of ['C1','C2','C3','C4']){
  const contract={...generationContract(category,'whole_card','test'),variation:categoryVisualSchedule(10,'test')[0]};
  const prompt=compileObjectPrompt({art_direction:'PINNED STYLE'},'Inanimate drum kit',contract);
- assert(prompt.startsWith('PINNED STYLE'));assert(prompt.includes(collectionRules));
+ assert(prompt.startsWith('PINNED STYLE'));assert(plannerPrompt.includes(collectionRules));assert(prompt.includes('SUBJECT/BACKGROUND SEPARATION'));assert(prompt.includes('HARD SUBJECT-FREE FRAME'));assert(prompt.includes('x=11%–89%, y=12%–88%'));
  assert.match(prompt,/No living creatures/);assert.match(prompt,/rear batter-head side/);
  assert.match(prompt,/78% canvas width and 76% height/);assert.match(prompt,/FROZEN CATEGORY VARIATION/);
  if(category==='C3')assert.match(prompt,/against a BASIC designed background/);
