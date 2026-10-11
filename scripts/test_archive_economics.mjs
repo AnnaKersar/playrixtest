@@ -1,21 +1,27 @@
 import assert from 'node:assert/strict';
-import {TARGETS,FIXED,CASH,PRODUCER_LABOR,artistRate,roundCents,scenario,breakEven,GRADES,DEFAULTS} from '../cloudflare/visitor-public/archive-economics.mjs';
+import {TARGETS,FIXED,CASH,PRODUCER_LABOR,artistRate,roundCents,scenario,breakEven,GRADES,GD_SALARIES,DEFAULTS} from '../cloudflare/visitor-public/archive-economics.mjs';
 import {createPublicGuestWorker} from '../cloudflare/public-guests.mjs';
 assert(Math.abs(FIXED-2832.3076923076924)<1e-8);
 assert.equal(CASH,140);assert.equal(PRODUCER_LABOR.toFixed(2),'2692.31');
 assert.equal((PRODUCER_LABOR/FIXED*100).toFixed(1),'95.1');
 assert.equal((CASH/FIXED*100).toFixed(1),'4.9');
 assert(Math.abs(artistRate(43500)-23.435625)<1e-8);
-const expected=['2834.10','2837.67','2850.20','2885.97','3011.18','4621.06'];
-for(const [i,n] of TARGETS.entries()){const s=scenario(n);assert.equal(s.total.toFixed(2),expected[i]);assert(Math.abs(s.variable/n-.178875)<1e-8);assert.equal(s.total,FIXED+s.variable);assert.equal(s.briefHours,Math.ceil(n/10)*2/60);for(const [j,g]of s.grades.entries()){assert(Math.abs(g.cost-n*[56.6818875,48.4875,46.87125][j])<1e-7);assert.equal(g.manualHours,n*[6,3,2][j]);}}
-assert.equal(scenario(10).grades[0].difference.toFixed(2),'-2267.28');
-assert.equal(scenario(30).grades[1].difference.toFixed(2),'-1383.05');
-assert.equal(scenario(10000).grades[2].difference.toFixed(2),'464091.44');
+const expected=['2834.17','2837.90','2850.95','2888.23','3018.73','4696.48'];
+for(const [i,n] of TARGETS.entries()){const s=scenario(n);assert.equal(s.total.toFixed(2),expected[i]);assert(Math.abs(s.variable/n-.1864175)<1e-8);assert.equal(s.total,FIXED+s.variable);assert.equal(s.briefHours,Math.ceil(n/10)*2/60);for(const [j,g]of s.grades.entries()){assert(Math.abs(g.cost-n*[56.6818875,48.4875,46.87125][j])<1e-7);assert.equal(g.manualHours,n*[6,3,2][j]);}}
+assert.equal(scenario(10).grades[0].difference.toFixed(2),'-2267.35');
+assert.equal(scenario(30).grades[1].difference.toFixed(2),'-1383.28');
+assert.equal(scenario(10000).grades[2].difference.toFixed(2),'464016.02');
 assert.equal(roundCents(scenario(300).grades[2].cost),14061.38);
 assert.equal(scenario(30,{...DEFAULTS,cost:null}),null);
 assert.equal(scenario(30,{...DEFAULTS,yieldPercent:0}),null);
 assert.equal(scenario(30,{...DEFAULTS,briefMinutes:-1}),null);
-assert(Math.abs(scenario(11).variable-(11*.125+2*.53875))<1e-8);
+assert(Math.abs(scenario(11).variable-(11*.125+2*.614175))<1e-8);
+assert(Math.abs(DEFAULTS.designerRate-18.42525)<1e-10);
+const senior={...DEFAULTS,designerRate:artistRate(GD_SALARIES.senior)};
+assert.equal(senior.designerRate,29.63125);
+const seniorExpected=['2834.55','2839.02','2854.68','2899.44','3056.08','5070.02'];
+for(const [i,n] of TARGETS.entries()){const s=scenario(n,senior);assert.equal(s.total.toFixed(2),seniorExpected[i]);assert(Math.abs(s.variable/n-.22377083333333333)<1e-10);}
+for(const [i,g]of GRADES.entries()){assert.deepEqual(breakEven(g.salary,senior),{cards:[51,59,61][i],collections:[60,60,70][i]});assert.deepEqual(breakEven(g.salary,senior,CASH),{cards:[3,3,4][i],collections:10});}
 for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary),{cards:[51,59,61][i],collections:[60,60,70][i]});}
 for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary,DEFAULTS,CASH),{cards:[3,3,4][i],collections:10});}
 assert.equal(scenario(10,{...DEFAULTS,artistHours:[6,3,0]}),null);

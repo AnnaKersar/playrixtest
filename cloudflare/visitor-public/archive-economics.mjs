@@ -6,7 +6,8 @@ export const artistRate=salary=>salary*1.1206/2080;
 // Round only at presentation; compensate binary drift at exact half-cent values.
 export const roundCents=value=>Math.sign(value)*Math.round((Math.abs(value)+Number.EPSILON*Math.abs(value))*100)/100;
 export const GRADES=[{label:'Junior',salary:17535},{label:'Middle',salary:30000},{label:'Senior',salary:43500}];
-export const DEFAULTS={cost:.1,yieldPercent:80,briefMinutes:2,designerRate:16.1625,artistHours:[6,3,2]};
+export const GD_SALARIES={middle:34200,senior:55000};
+export const DEFAULTS={cost:.1,yieldPercent:80,briefMinutes:2,designerRate:artistRate(GD_SALARIES.middle),artistHours:[6,3,2]};
 export function scenario(n,input=DEFAULTS){
  const {cost,yieldPercent,briefMinutes,designerRate,artistHours}=input;
  if(!Array.isArray(artistHours)||artistHours.length!==3||!artistHours.every(h=>Number.isFinite(h)&&h>0)||![n,cost,yieldPercent,briefMinutes,designerRate].every(Number.isFinite)||n<=0||cost<0||yieldPercent<=0||yieldPercent>100||briefMinutes<0||designerRate<0)return null;
@@ -28,12 +29,15 @@ if(typeof document!=='undefined'){
  const fmt=(v,d=2)=>v.toLocaleString('ru-RU',{maximumFractionDigits:d,minimumFractionDigits:d});
  const money=v=>'$'+fmt(roundCents(v)),signed=v=>(v>=0?'+':'−')+money(Math.abs(v));
  function render(){
-  const input={cost:num('attempt-cost'),yieldPercent:num('yield'),briefMinutes:num('brief-minutes'),designerRate:num('designer-rate'),artistHours:['junior-hours','middle-hours','senior-hours'].map(num)};
+  const gdSalary=num('gd-salary'),input={cost:num('attempt-cost'),yieldPercent:num('yield'),briefMinutes:num('brief-minutes'),designerRate:artistRate(gdSalary),artistHours:['junior-hours','middle-hours','senior-hours'].map(num)};
   const sample=scenario(10,input);
   if(!sample){el('scenario-status').textContent='Заполните поля: приёмка 1–100%, время каждого художника больше нуля, остальные значения неотрицательные.';el('comparison-table').replaceChildren();el('break-even').replaceChildren();el('collection-cost').textContent='—';el('running-card-cost').textContent='—';return;}
   el('scenario-status').textContent='Допущения применены. После прототипа труд продюсера и отдельный QA: 0 часов.';
   el('collection-cost').textContent=money(sample.variable);
   el('running-card-cost').textContent=money(sample.variable/10);
+  const precise=v=>v.toLocaleString('ru-RU',{maximumFractionDigits:8});
+  const gdBriefCost=input.briefMinutes/60*input.designerRate;
+  el('gd-salary-basis').textContent='Game Design '+(gdSalary===GD_SALARIES.senior?'Senior':'Middle')+': медиана €'+fmt(gdSalary,0)+' gross/год = $'+precise(input.designerRate)+'/ч. При '+precise(input.briefMinutes)+' мин на бриф 10 карт: $'+precise(gdBriefCost)+' ('+money(gdBriefCost)+' за коллекцию), или $'+precise(gdBriefCost/10)+' на карту. Зарплата — данные опроса; время ввода — допущение.';
   el('scenario-summary').textContent='Сценарий: '+money(input.cost)+' за API-попытку, '+fmt(input.yieldPercent,0)+'% приёмки и '+fmt(input.briefMinutes,1)+' мин на бриф коллекции. Junior / Middle / Senior: '+input.artistHours.map(h=>fmt(h,1)).join(' / ')+' ч на карту при готовом арт-стиле и референсах. Это допущения, не нормы отрасли; равное принятое качество не подтверждено.';
   const headers=['Новых карт','AI: новые расходы','AI: с прототипом','Художник Junior','Художник Middle','Художник Senior'];
   const table=document.createElement('table'),head=table.createTHead().insertRow();
@@ -48,5 +52,5 @@ if(typeof document!=='undefined'){
   el('comparison-table').replaceChildren(table);
   el('break-even').replaceChildren(...GRADES.map(g=>{const b=breakEven(g.salary,input),cash=breakEven(g.salary,input,CASH),p=document.createElement('p'),strong=document.createElement('strong');p.append('Против '+g.label);strong.textContent=b.collections===null?'Не окупается':fmt(b.collections,0)+' карточек';p.append(strong);const small=document.createElement('small');small.textContent=b.cards===null?'Новые расходы не ниже ручных.':'С оценкой труда; точный порог — '+fmt(b.cards,0)+'.';p.append(small);const cashLine=document.createElement('small');cashLine.className='economics-cash-break-even';cashLine.textContent=cash.cards===null?'Только $140 сервисов: не окупается.':'Только $140 сервисов: '+fmt(cash.collections,0)+' карт (точно '+fmt(cash.cards,0)+').';p.append(cashLine);return p;}));
  }
- document.querySelectorAll('#attempt-cost,#yield,#brief-minutes,#designer-rate,#junior-hours,#middle-hours,#senior-hours').forEach(input=>input.addEventListener('input',render));render();
+ document.querySelectorAll('#attempt-cost,#yield,#brief-minutes,#gd-salary,#junior-hours,#middle-hours,#senior-hours').forEach(input=>input.addEventListener('input',render));render();
 }

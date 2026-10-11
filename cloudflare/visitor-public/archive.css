@@ -123,3 +123,5 @@ html{scroll-padding-top:24px;overflow-y:auto}
 .economics-simple .archive-counts p{font-size:.85rem;line-height:1.5;margin:.5rem 0 0}
 .economics-cash-break-even{display:block;margin-top:.6rem;padding-top:.6rem;border-top:1px solid #c9dbe4}
 .economics-simple thead small{display:block;font-size:.78rem;font-weight:500;line-height:1.5;margin-top:.25rem}
+.economics-gd-role{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem;font-weight:650;margin:1rem 0}
+.economics-gd-role select{max-width:100%;box-sizing:border-box;border:1px solid #829584;border-radius:.5rem;padding:.6rem;background:#fff;color:#17251c;font:inherit}

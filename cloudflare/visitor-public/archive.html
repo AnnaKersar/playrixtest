@@ -26,25 +26,26 @@
 <dl class="archive-counts"><div><dt>Денежные расходы на сервисы</dt><dd>$140</dd><p>$80 ChatGPT + $60 API и Cloudflare вместе</p></div><div><dt>Оценка труда продюсера</dt><dd>$2 692,31</dd><p>40 ч × ($140 000 gross/год ÷ 2 080)</p></div><div><dt>Полная стоимость прототипа</dt><dd>$2 832,31</dd><p>Примерно 95,1% — труд; 4,9% — сервисы</p></div></dl>
 <p class="economics-footnote">$140 — сообщённые автором денежные расходы. $2 692,31 — зарплатная оценка времени, а не оплаченный счёт за API или разработку. Обе статьи учитываются один раз.</p>
 <p><strong>Следующие 10 карточек: <span id="collection-cost">—</span></strong> · одна новая карточка без прототипа: <span id="running-card-cost">—</span>.</p>
-<p class="economics-footnote" id="gd-salary-basis"><strong>Исходное допущение GD:</strong> €30 000 gross/год = $16,1625/ч при 2 080 ч/год и курсе 1,1206. Ввод темы и брифа — 2 минуты на 10 карт: $0,53875 (округлённо <strong>$0,54 за коллекцию</strong>), или $0,053875 на карту. Ставка условная, не измеренная рыночная зарплата GD в Европе.</p>
+<label class="economics-gd-role">Кто вводит бриф<select id="gd-salary"><option value="34200">GD Middle — €34 200 gross/год</option><option value="55000">GD Senior — €55 000 gross/год</option></select></label>
+<p class="economics-footnote" id="gd-salary-basis">Game Design Middle: медиана €34 200 gross/год = $18,42525/ч. При условных 2 минутах на 10 карт: $0,614175 за бриф коллекции, или $0,0614175 на карту.</p>
+<p class="economics-footnote">Источник GD: <a href="https://investgame.net/wp-content/uploads/2025/11/Big_Games_Industry_Employment_Survey_2025.pdf#page=7">Values Value / InGameJob 2025, стр. 7–8</a>, Game Design, EU+UK+CH. Junior не опубликован. Выбираем уровень фактического исполнителя: простота брифа не снижает ставку Senior.</p>
 <p id="scenario-summary"></p>
 <p class="economics-footnote">Зарплаты: <a href="https://investgame.net/wp-content/uploads/2025/11/Big_Games_Industry_Employment_Survey_2025.pdf">Values Value / InGameJob 2025, Art/Design, EU+UK+CH</a> — широкая категория, не ставка 2D-художников Playrix. Пересчёт: 1 EUR = 1,1206 USD (ЕЦБ, 09.10.2026), 2 080 ч/год. Только gross-зарплата, без взносов работодателя.</p>
 <p class="economics-legend"><strong>+ в плюсе</strong> — ручной сценарий дороже. <strong>− в минусе</strong> — прототип с новой серией пока дороже.</p>
 <div id="comparison-table" class="archive-table-wrap"></div>
 <h3>Когда окупится прототип</h3><p>Крупно — с оценкой труда. Ниже — только возврат $140 денежных расходов. Объёмы округлены до полных коллекций по 10 карт.</p><div id="break-even" class="economics-break-even"></div>
-<p class="economics-footnote">Объём — новые карточки сверх демо-партии. После прототипа считаем только API и ввод темы/брифа геймдизайнером. Ручная арт-приёмка, QA и ретушь исключены по выбранному сценарию. Разница условна: сопоставимое качество ещё нужно подтвердить.</p>
+<p class="economics-footnote">Объём — новые карточки сверх демо-партии. После прототипа здесь учтены API и ввод брифа GD. Регулярный хостинг, ПО художника, обслуживание, ручная проверка и ретушь пока не включены. Разница условна: сопоставимое качество ещё нужно подтвердить.</p>
 <details class="economics-settings"><summary>Изменить допущения и посмотреть методику</summary>
 <div class="economics-inputs">
 <label>API за попытку, $<input id="attempt-cost" type="number" min="0" step="0.01" value="0.10"></label>
 <label>Приёмка без новой попытки, %<input id="yield" type="number" min="1" max="100" value="80"></label>
 <label>Ввод брифа на 10 карт, минут<input id="brief-minutes" type="number" min="0" step="1" value="2"></label>
-<label>Геймдизайнер, $/час<input id="designer-rate" type="number" min="0" step="0.0001" value="16.1625"></label>
 <label>Junior: часов на карту<input id="junior-hours" type="number" min="0.01" step="0.5" value="6"></label>
 <label>Middle: часов на карту<input id="middle-hours" type="number" min="0.01" step="0.5" value="3"></label>
 <label>Senior: часов на карту<input id="senior-hours" type="number" min="0.01" step="0.5" value="2"></label>
 </div><p id="scenario-status" role="status"></p>
 <p>Это редактируемые плановые допущения, не замеры текущей партии. API-ставка должна включать оплачиваемые запросы; дополнительные расходы planner/инфраструктуры в базовом сценарии равны нулю.</p>
-<p>Ставка геймдизайнера €30 000 gross/год — условный прокси, не рыночная оценка этой роли. В базовом сценарии на коллекцию из 10 карт: $1,25 API + $0,53875 ввода брифа = $1,78875. На карточку — $0,178875 без промежуточного округления.</p>
+<p>Медианы Game Design: Middle €34 200 и Senior €55 000 gross/год. При 2 080 ч/год и 1 EUR = 1,1206 USD ставки равны $18,42525 и $29,63125/ч. Базовая коллекция из 10 карт с Middle: $1,25 API + $0,614175 брифа = $1,864175. С Senior: $2,23770833 за коллекцию. Прежние €30 000 относились к Art/Design, а не к Game Design; этот прокси заменён профильными данными.</p>
 <p>Расчёт: новые расходы = N ÷ доля приёмки × API за попытку + округлённое вверх число коллекций N/10 × минуты брифа ÷ 60 × ставка GD. Полная сумма = новые расходы + $2 832,307692. Разница = зарплатная стоимость художника − полная сумма AI. Неполная коллекция оплачивает целый бриф.</p>
 <p>Активное время после прототипа: GD = N/300 часов; Junior = 6N, Middle = 3N, Senior = 2N часов в базовом сценарии. Для 10 000 карт: 33,33 часа ввода брифов и соответственно 60 000 / 30 000 / 20 000 часов художника. Это модель трудозатрат при готовом арт-стиле и референсах, не измеренная производительность или календарный срок.</p>
 <p>Прототип: примерно $140 прямых расходов ($80 ChatGPT + $60 API и Cloudflare вместе) и 40 часов автора по $140 000 gross/год ÷ 2 080. Итого $2 832,307692; эти 40 часов больше не повторяются.</p>
