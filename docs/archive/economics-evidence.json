@@ -1,0 +1,63 @@
+{
+  "schema": "playrix-economics/v1",
+  "direct_spend": {
+    "usd": 140,
+    "chatgpt_usd": 80,
+    "api_and_cloudflare_combined_usd": 60,
+    "type": "user_reported_approximate",
+    "no_additional_ledger_sum": true
+  },
+  "labor": {
+    "annual_gross_usd": 140000,
+    "annual_conversion_hours": 2080,
+    "active_project_hours": 40,
+    "type": "user_estimate",
+    "scope": "Wednesday–Sunday, 8 active hours/day; includes full Sunday, not measured elapsed-to-date labor.",
+    "employer_overhead": false
+  },
+  "game_observation": {
+    "at_utc": "2026-10-11T04:03:00Z",
+    "time_precision": "approximate retrieval minute",
+    "source": "https://playrixtest.acasyna.workers.dev/api/game/stats",
+    "batch_source": "https://playrixtest.acasyna.workers.dev/api/game",
+    "cards": 30,
+    "generated_card_browser_pairs": 201,
+    "generated_selected_pairs": 56,
+    "reference_cards": 129,
+    "reference_card_browser_pairs": 677,
+    "reference_selected_pairs": 150,
+    "anonymous_browsers": 14,
+    "completed_games_returned": 5,
+    "archived_games_returned": 10,
+    "protocol": "simultaneous/v2",
+    "accepted_cards": null,
+    "latest_batch_cost_usd": null,
+    "latest_batch_duration_seconds": null,
+    "interpretation": "Deduplicated card-browser pairs; selected means selected at least once by that browser. Not first-attempt acceptance, not independent people, not round counts."
+  },
+  "planning_defaults_not_measurements": {"new_accepted_cards_beyond_demo":true,"yield_percent":80,"cost_per_attempt_usd":0.1,"qa_minutes_per_attempt":5,"provider_seconds_per_attempt":30,"planner_extra_usd":0,"infrastructure_extra_usd":0,"concurrency":1,"quality_equivalence_established":false},
+  "scenarios": [
+    10,
+    30,
+    100,
+    300,
+    1000,
+    10000
+  ],
+  "artist": {
+    "currency": "EUR",
+    "fx_usd_per_eur": 1.1206,
+    "fx_date": "2026-10-09",
+    "annual_conversion_hours": 2080,
+    "default_gross_eur": 43500,
+    "hours_per_card": [
+      2,
+      8,
+      16
+    ],
+    "time_type": "scenario_assumption",
+    "salary_source": "https://investgame.net/wp-content/uploads/2025/11/Big_Games_Industry_Employment_Survey_2025.pdf",
+    "fx_source": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
+    "scope": "InGameJob/Values Value 2025 Art/Design Senior median EU+UK+CH, not EU-only or 2D-only."
+  }
+}

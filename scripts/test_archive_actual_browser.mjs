@@ -52,11 +52,14 @@ try{
   assert.equal(await ev('document.querySelectorAll(".reference").length'),160);
   assert.equal(await ev('document.querySelectorAll(".uncertain").length'),57);
   assert.equal(await ev('document.querySelectorAll(".archive-phase").length'),10);
+  assert.equal(await ev('document.querySelectorAll(".archive-phase-conclusion").length'),10);
+  assert.equal(await ev('document.querySelectorAll("#original-pipelines .archive-scheme-flow").length'),3);
+  assert.equal(await ev('new Set(Array.from(document.querySelectorAll(".archive-phase a")).filter(a=>a.hash.startsWith("#history-")).map(a=>a.hash)).size'),57);
   assert.equal(await ev('document.querySelectorAll(".archive-scheme").length'),5);
-  assert.equal(await ev('document.querySelectorAll(".archive-scheme-flow").length'),5);
+  assert.equal(await ev('document.querySelectorAll("#scheme-list .archive-scheme-flow").length'),5);
   assert.equal(await ev('document.querySelectorAll(".archive-step.step").length'),0);
   assert(await ev('Array.from(document.images).every(img=>img.hasAttribute("alt")&&img.alt.trim().length>0)'));
-  assert(await ev('Array.from(document.querySelectorAll(".archive-toc a")).every(a=>document.querySelector(a.hash))'));
+  assert(await ev('Array.from(document.querySelectorAll(".archive-toc a")).every(a=>a.hash?document.querySelector(a.hash):a.pathname==="/archive/economics.html")'));
   const media=await ev('Promise.all(Array.from(document.querySelectorAll(".archive-phase-media img")).map(async img=>{img.loading="eager";await img.decode();const f=img.closest("figure");return {record:f.dataset.recordId,sha:f.dataset.sha256,loaded:img.naturalWidth>0};}))');
   assert(media.length>=12,'Expected the selected historical comparisons');
   for(const item of media){assert(item.loaded);assert(item.record==='latest-lora-test'?lora.assets.some(a=>a.sha256===item.sha):m.entries.find(e=>e.id===item.record)?.images.some(a=>a.sha256===item.sha));}
@@ -78,8 +81,18 @@ try{
   assert.equal(await ev('document.querySelectorAll(".archive-step").length'),57);
   assert(await ev('document.getElementById("history-I15").open'));
   assert(await ev('document.documentElement.scrollWidth<=390'),'Expanded record overflow');
+  await send('Page.navigate',{url:'http://127.0.0.1:'+server.address().port+'/archive/economics.html'});
+  for(let i=0;i<60;i++){if(await ev('document.querySelectorAll("#production-table tbody tr").length===6'))break;await new Promise(r=>setTimeout(r,100));}
+  assert.equal(await ev('document.querySelectorAll("#production-table tbody tr").length'),6);
+  assert.equal(await ev('document.querySelectorAll("#manual-table tbody tr").length'),6);
+  assert(await ev('!document.body.textContent.includes("NaN")'));
+  for(const width of [1280,768,390,320]){await viewport(width,844);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Economics overflow at '+width);}
+  await screenshot('economics-mobile');
+  await viewport(1280);await screenshot('economics-desktop');
+  await ev('document.getElementById("attempt-cost").value="";document.getElementById("attempt-cost").dispatchEvent(new Event("input"))');
+  assert(await ev('document.getElementById("scenario-status").textContent.includes("Стоимость не рассчитана")'));
   assert.equal(paidCalls,0);
-  console.log('PASS actual archive: 57 entries, 7 chapter buttons, 160 reference captions, 57 uncertainty labels, search and deep links; 10 phases, 5 schemes, verified comparison images; 1280/768/390/320px no overflow or summary clipping; 0 paid calls.');
+  console.log('PASS archive and economics: all 57 records linked, 10 phase conclusions, 3 original workflows, 5 final schemes, verified images, search and deep links; six numerical scenarios and missing-cost handling; 1280/768/390/320px no overflow or clipping; 0 paid calls.');
 }finally{
   if(send)try{await send('Browser.close');}catch{}
   ws?.close();edge.kill();server.close();

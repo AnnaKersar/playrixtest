@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 const dir='docs/archive',publicDir='cloudflare/visitor-public';
 const readJSON=async path=>JSON.parse(await fs.readFile(path,'utf8'));
+const evolution=await readJSON(dir+'/evolution.ru.json');
 const [caseStudy,frameworks,visuals,manifest,lora,technical,art]=await Promise.all([
   readJSON(dir+'/case-ui.ru.json'),readJSON(dir+'/frameworks.ru.json'),readJSON(dir+'/editorial-visuals.json'),
   readJSON(publicDir+'/archive-seed/history-v1/archive-manifest.json'),readJSON(publicDir+'/archive/latest-lora-test/test.json'),
@@ -18,6 +19,10 @@ const selection={
   'phase-08':[{record:'I12',file:'background_plus_pattern.png',title:'Исторический фон и узор · I12'},{record:'I12',file:'assembled_existing_hat.png',title:'Ранняя сборка с сохранённым предметом · I12'}]
 };
 const phases=caseStudy.phases.map(p=>({...p,summary:p.decision,records:p.archive_ids,media:selection[p.id]||[]}));
+phases.forEach((p,i)=>{p.conclusion={evidence:evolution.conclusions[i][0],change:evolution.conclusions[i][1],risk:evolution.conclusions[i][2]};});
+phases[0].records=[...phases[0].records,'original-reference-library'];
+phases[2].records=[...phases[2].records,'T08'];
+phases[3].records=[...phases[3].records,'T12'];
 for(const phase of phases){
   for(const id of phase.records)if(!byID.has(id))throw Error('Unknown history ID '+id);
   for(const media of phase.media){
@@ -50,7 +55,7 @@ visuals.schemes[3]={id:'architecture',title:'04 · Техническая арх
 {title:'Просмотр → edit → Apply',text:'Отдельная версия правки; явный выбор версии. Экспорт PNG bytes в ZIP.'}],note:'Исторический transparent foreground → procedural compositor — отдельная сохранённая ветка. Technical complete не означает художественную приёмку. Runtime parity и причина прежних зависаний этим аудитом не установлены.'};
 visuals.schemes[4].nodes[2]={title:'Выбрать ветку',text:'Новые live-карточки всех C1–C4 создаются whole_card; modular сохранён для исторических foreground и пересборки.'};
 const prompts=await Promise.all(['v1.1','v1.2'].map(async version=>({title:'Narrative collection designer '+version,filename:'narrative-collection-designer-'+version+'.md',text:await fs.readFile('prompts/narrative-collection-designer-'+version+'.md','utf8')})));
-const editorial={caseStudy,phases,schemes:visuals.schemes.map((s,i)=>({...s,body_markdown:frameworks.sections[i].body_markdown})),decisions:visuals.decisions,technical,art,game:frameworks.sections[5],frameworks,prompts};
+const editorial={caseStudy,phases,schemes:visuals.schemes.map((s,i)=>({...s,body_markdown:frameworks.sections[i].body_markdown})),decisions:visuals.decisions,technical,art,game:frameworks.sections[5],frameworks,prompts,evolution};
 const path=publicDir+'/archive.js',source=await fs.readFile(path,'utf8');
 const updated=source.replace(/const archiveEditorial = [\s\S]*?\nfunction recordLink/,()=> 'const archiveEditorial = '+JSON.stringify(editorial,null,2)+';\nfunction recordLink');
 if(updated===source&&!source.includes(JSON.stringify(editorial,null,2)))throw Error('Editorial marker not found');

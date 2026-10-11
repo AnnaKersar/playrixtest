@@ -96,3 +96,11 @@ html{scroll-padding-top:24px;overflow-y:auto}
 @media(max-width:760px){.archive-layout{display:block;padding:22px 14px}.archive-sidebar{position:static;margin-bottom:24px}.archive-toc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:14px}.archive-toc .eyebrow{grid-column:1/-1}.archive-panel,.archive-phase{padding:22px 18px;border-radius:18px;margin-bottom:22px}.archive-page .archive-header-inner{padding:10px 4px}.archive-counts{gap:8px}.archive-counts>div{padding:12px 8px}.archive-counts dd{font-size:25px}.archive-counts dt{font-size:12px}.archive-phase-index{min-width:36px;font-size:18px}.archive-phase-head{gap:12px}.archive-page .notes{grid-template-columns:1fr}.archive-body{padding:16px}.archive-step>summary{padding:16px 12px;gap:12px}.archive-title{font-size:18px}.archive-page .number{font-size:18px}}
 @media(max-width:500px){.archive-phase-media,.archive-page .images,.archive-scheme-flow{grid-template-columns:1fr}.archive-scheme-flow{gap:22px}.archive-scheme-flow li:not(:last-child)::after{content:'↓';right:auto;left:20px;top:auto;bottom:-22px}.archive-page figure img{height:300px}.archive-page{font-size:16px}.archive-page h2{font-size:25px}.archive-toc{max-height:none}.archive-toc-phases{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+/* Editorial conclusions and the linked cost model share the archive typography. */
+.archive-phase-conclusion{margin-top:1.5rem;padding-top:1rem;border-top:2px solid var(--line,#d6ddd5)}
+.economics-inputs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.5rem 0}
+.economics-inputs label{display:flex;flex-direction:column;gap:.4rem;font-weight:650}
+.economics-inputs input,#artist-salary{width:100%;box-sizing:border-box;padding:.7rem;border:1px solid #829584;border-radius:.5rem;background:#fff;color:#17251c;font:inherit}
+.economics-bars meter{display:block;width:100%;height:1.4rem;margin:.4rem 0 1rem;accent-color:#426b4a}
+.archive-page main{min-width:0}
+@media(max-width:600px){.economics-inputs{grid-template-columns:1fr}.economics-bars p{overflow-wrap:anywhere}}
