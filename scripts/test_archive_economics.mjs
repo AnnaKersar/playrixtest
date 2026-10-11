@@ -1,28 +1,31 @@
 import assert from 'node:assert/strict';
-import {TARGETS,FIXED,CASH,PRODUCER_LABOR,artistRate,roundCents,scenario,breakEven,GRADES,GD_SALARIES,DEFAULTS} from '../cloudflare/visitor-public/archive-economics.mjs';
+import {TARGETS,FIXED,CASH,PRODUCER_LABOR,SOFTWARE_RATE,artistRate,roundCents,scenario,breakEven,GRADES,GD_SALARIES,DEFAULTS} from '../cloudflare/visitor-public/archive-economics.mjs';
 import {createPublicGuestWorker} from '../cloudflare/public-guests.mjs';
 assert(Math.abs(FIXED-2832.3076923076924)<1e-8);
 assert.equal(CASH,140);assert.equal(PRODUCER_LABOR.toFixed(2),'2692.31');
 assert.equal((PRODUCER_LABOR/FIXED*100).toFixed(1),'95.1');
 assert.equal((CASH/FIXED*100).toFixed(1),'4.9');
 assert(Math.abs(artistRate(43500)-23.435625)<1e-8);
-const expected=['2834.17','2837.90','2850.95','2888.23','3018.73','4696.48'];
-for(const [i,n] of TARGETS.entries()){const s=scenario(n);assert.equal(s.total.toFixed(2),expected[i]);assert(Math.abs(s.variable/n-.1864175)<1e-8);assert.equal(s.total,FIXED+s.variable);assert.equal(s.briefHours,Math.ceil(n/10)*2/60);for(const [j,g]of s.grades.entries()){assert(Math.abs(g.cost-n*[56.6818875,48.4875,46.87125][j])<1e-7);assert.equal(g.manualHours,n*[6,3,2][j]);}}
-assert.equal(scenario(10).grades[0].difference.toFixed(2),'-2267.35');
-assert.equal(scenario(30).grades[1].difference.toFixed(2),'-1383.28');
-assert.equal(scenario(10000).grades[2].difference.toFixed(2),'464016.02');
-assert.equal(roundCents(scenario(300).grades[2].cost),14061.38);
+const expected=['2839.17','2842.90','2855.95','2893.23','3023.73','4701.48'];
+assert(Math.abs(SOFTWARE_RATE-.21651285)<1e-12);
+for(const [i,n] of TARGETS.entries()){const s=scenario(n);assert.equal(s.total.toFixed(2),expected[i]);assert(Math.abs(s.running/n-.1864175)<1e-8);assert.equal(s.hosting,5);assert.equal(s.total,FIXED+s.variable);assert.equal(s.briefHours,Math.ceil(n/10)*2/60);assert(Math.abs(scenario(n,{...DEFAULTS,hostingMonths:3}).variable-s.variable-10)<1e-8);for(const [j,g]of s.grades.entries()){assert(Math.abs(g.wages-n*[56.6818875,48.4875,46.87125][j])<1e-7);assert(Math.abs(g.software-g.manualHours*.21651285)<1e-8);assert.equal(g.cost,g.wages+g.software);assert.equal(g.manualHours,n*[6,3,2][j]);}}
+assert.equal(scenario(10).grades[0].difference.toFixed(2),'-2259.36');
+assert.equal(scenario(30).grades[1].difference.toFixed(2),'-1368.79');
+assert.equal(scenario(10000).grades[2].difference.toFixed(2),'468341.27');
+assert.equal(roundCents(scenario(300).grades[2].wages),14061.38);
 assert.equal(scenario(30,{...DEFAULTS,cost:null}),null);
 assert.equal(scenario(30,{...DEFAULTS,yieldPercent:0}),null);
 assert.equal(scenario(30,{...DEFAULTS,briefMinutes:-1}),null);
-assert(Math.abs(scenario(11).variable-(11*.125+2*.614175))<1e-8);
+assert(Math.abs(scenario(11).variable-(11*.125+2*.614175+5))<1e-8);
 assert(Math.abs(DEFAULTS.designerRate-18.42525)<1e-10);
 const senior={...DEFAULTS,designerRate:artistRate(GD_SALARIES.senior)};
 assert.equal(senior.designerRate,29.63125);
-const seniorExpected=['2834.55','2839.02','2854.68','2899.44','3056.08','5070.02'];
-for(const [i,n] of TARGETS.entries()){const s=scenario(n,senior);assert.equal(s.total.toFixed(2),seniorExpected[i]);assert(Math.abs(s.variable/n-.22377083333333333)<1e-10);}
-for(const [i,g]of GRADES.entries()){assert.deepEqual(breakEven(g.salary,senior),{cards:[51,59,61][i],collections:[60,60,70][i]});assert.deepEqual(breakEven(g.salary,senior,CASH),{cards:[3,3,4][i],collections:10});}
-for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary),{cards:[51,59,61][i],collections:[60,60,70][i]});}
+const seniorExpected=['2839.55','2844.02','2859.68','2904.44','3061.08','5075.02'];
+for(const [i,n] of TARGETS.entries()){const s=scenario(n,senior);assert.equal(s.total.toFixed(2),seniorExpected[i]);assert(Math.abs(s.running/n-.22377083333333333)<1e-10);}
+for(const [i,g]of GRADES.entries()){assert.deepEqual(breakEven(g.salary,senior),{cards:[50,59,61][i],collections:[50,60,70][i]});assert.deepEqual(breakEven(g.salary,senior,CASH),{cards:[3,3,4][i],collections:10});}
+for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary),{cards:[50,58,61][i],collections:[50,60,70][i]});}
+for(const input of [DEFAULTS,senior,{...DEFAULTS,hostingMonths:4}])for(const fixed of [FIXED,CASH])for(const [i,g]of GRADES.entries()){const b=breakEven(g.salary,input,fixed),current=scenario(b.cards,input),previous=scenario(b.cards-1,input);assert(current.grades[i].cost>=fixed+current.variable);assert(previous.grades[i].cost<fixed+previous.variable);}
+assert.equal(scenario(10,{...DEFAULTS,hostingMonths:0}),null);
 for(const [i,g] of GRADES.entries()){assert.deepEqual(breakEven(g.salary,DEFAULTS,CASH),{cards:[3,3,4][i],collections:10});}
 assert.equal(scenario(10,{...DEFAULTS,artistHours:[6,3,0]}),null);
 assert.equal(scenario(10,{...DEFAULTS,artistHours:[6,3,null]}),null);

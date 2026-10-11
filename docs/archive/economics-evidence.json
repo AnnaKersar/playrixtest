@@ -43,7 +43,6 @@
     "separate_art_qa_and_retouch_excluded": true,
     "brief_minutes_per_10_card_collection": 2,
     "planner_extra_usd": 0,
-    "infrastructure_extra_usd": 0,
     "quality_equivalence_established": false,
     "artist_hours_per_card_by_grade": {
       "Junior": 6,
@@ -103,5 +102,26 @@
     "default_grade": "middle",
     "source_verification": "Primary PDF visually verified by parent researcher",
     "supersedes": "EUR 30000 Art/Design proxy"
+  },
+  "operating_costs": {
+    "verified_date": "2026-10-11",
+    "source_verification": "Official tariff pages verified by parent researcher",
+    "hosting": {
+      "usd_per_project_month": 5,
+      "default_months": 1,
+      "scope": "Future Workers Paid minimum, once per project period; historical Cloudflare already included in prototype; overages unknown and excluded",
+      "source": "https://developers.cloudflare.com/workers/platform/pricing/"
+    },
+    "artist_software": {
+      "product": "Photoshop for Teams",
+      "country": "Germany",
+      "eur_monthly_excluding_vat": 33.49,
+      "annual_commitment": true,
+      "annual_eur": 401.88,
+      "hourly_usd": 0.21651285,
+      "basis": "Existing license allocation at 2080 hours per year; not a cancellable hourly/monthly purchase",
+      "source": "https://www.adobe.com/de/creativecloud/business/teams/plans.html"
+    },
+    "extra_producer_qa_hours": 0
   }
 }
