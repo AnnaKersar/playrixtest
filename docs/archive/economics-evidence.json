@@ -35,7 +35,25 @@
     "latest_batch_duration_seconds": null,
     "interpretation": "Deduplicated card-browser pairs; selected means selected at least once by that browser. Not first-attempt acceptance, not independent people, not round counts."
   },
-  "planning_defaults_not_measurements": {"new_accepted_cards_beyond_demo":true,"yield_percent":80,"cost_per_attempt_usd":0.1,"ongoing_producer_hours":0,"separate_art_qa_and_retouch_excluded":true,"brief_minutes_per_10_card_collection":2,"designer_usd_per_hour":16.1625,"designer_salary_is_proxy":true,"artist_hours_per_card_all_grades":8,"planner_extra_usd":0,"infrastructure_extra_usd":0,"quality_equivalence_established":false},
+  "planning_defaults_not_measurements": {
+    "new_accepted_cards_beyond_demo": true,
+    "yield_percent": 80,
+    "cost_per_attempt_usd": 0.1,
+    "ongoing_producer_hours": 0,
+    "separate_art_qa_and_retouch_excluded": true,
+    "brief_minutes_per_10_card_collection": 2,
+    "designer_usd_per_hour": 16.1625,
+    "designer_salary_is_proxy": true,
+    "planner_extra_usd": 0,
+    "infrastructure_extra_usd": 0,
+    "quality_equivalence_established": false,
+    "artist_hours_per_card_by_grade": {
+      "Junior": 6,
+      "Middle": 3,
+      "Senior": 2
+    },
+    "artist_time_scope": "Approved working assumptions with established art style and references; not market norms or measured equal-quality productivity"
+  },
   "scenarios": [
     10,
     30,
@@ -50,14 +68,19 @@
     "fx_date": "2026-10-09",
     "annual_conversion_hours": 2080,
     "default_gross_eur": 43500,
-    "hours_per_card": [
-      2,
-      8,
-      16
-    ],
     "time_type": "scenario_assumption",
     "salary_source": "https://investgame.net/wp-content/uploads/2025/11/Big_Games_Industry_Employment_Survey_2025.pdf",
     "fx_source": "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html",
-    "scope": "InGameJob/Values Value 2025 Art/Design Senior median EU+UK+CH, not EU-only or 2D-only."
+    "scope": "InGameJob/Values Value 2025 Art/Design Senior median EU+UK+CH, not EU-only or 2D-only.",
+    "hours_per_card_by_grade": {
+      "Junior": 6,
+      "Middle": 3,
+      "Senior": 2
+    },
+    "annual_gross_eur_by_grade": {
+      "Junior": 17535,
+      "Middle": 30000,
+      "Senior": 43500
+    }
   }
 }

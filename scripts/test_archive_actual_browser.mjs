@@ -93,10 +93,13 @@ try{
   assert.equal(await ev('document.querySelectorAll("#comparison-table tbody tr").length'),6);
   assert.equal(await ev('document.querySelectorAll("table").length'),1);
   assert(await ev('document.getElementById("collection-cost").textContent.includes("1,79")'));
-  assert(await ev('document.getElementById("break-even").textContent.includes("40 карточек")'));
+  assert(await ev('document.getElementById("break-even").textContent.includes("60 карточек")'));
   assert.equal(await ev('document.querySelectorAll(".economics-cash-break-even").length'),3);
   assert(await ev('document.querySelector(".archive-counts").textContent.includes("95,1%")'));
-  assert.equal(await ev('document.getElementById("artist-hours").value'),'8');
+  assert.deepEqual(await ev('["junior-hours","middle-hours","senior-hours"].map(id=>document.getElementById(id).value)'),['6','3','2']);
+  assert(await ev('document.querySelector("#comparison-table thead").textContent.includes("17 535")'));
+  assert(await ev('document.querySelector("#comparison-table thead").textContent.includes("23,435625")'));
+  assert(await ev('document.querySelectorAll("#comparison-table tbody tr")[3].lastElementChild.textContent.includes("14 061,38")'));
   assert(await ev('!document.body.textContent.includes("NaN")'));
   for(const width of [1280,768,390,320]){await viewport(width,844);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Economics overflow at '+width);}
   await ev('document.getElementById("comparison-table").scrollIntoView()');await screenshot('economics-mobile');
@@ -104,7 +107,7 @@ try{
   await ev('document.querySelector("details").open=true');
   await viewport(320);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Economics settings overflow');
   await ev('document.getElementById("attempt-cost").value="";document.getElementById("attempt-cost").dispatchEvent(new Event("input"))');
-  assert(await ev('document.getElementById("scenario-status").textContent.includes("Заполните пять полей")'));
+  assert(await ev('document.getElementById("scenario-status").textContent.includes("Заполните поля")'));
   await send('Page.navigate',{url:'http://127.0.0.1:'+server.address().port+'/archive/latest-lora-test/index.html'});
   for(let i=0;i<60;i++){if(await ev('location.hash==="#phase-09" && document.querySelectorAll("#phase-09 img").length===8'))break;await new Promise(r=>setTimeout(r,100));}
   assert.equal(await ev('location.hash'),'#phase-09');
