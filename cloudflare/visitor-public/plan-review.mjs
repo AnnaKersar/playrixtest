@@ -2,15 +2,17 @@ export function createPlanReview({approve,revise}){
  const el=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};
  const panel=el('section');panel.id='plan-review';panel.className='plan-review';panel.hidden=true;
  panel.append(el('h2','План коллекции'),el('p','Проверьте темы и предметы. Изображения начнут создаваться только после вашего подтверждения.'));
+ const warning=el('p'),repair=el('button','Уточнить проверки плана');repair.type='button';repair.className='plan-change';warning.setAttribute('role','alert');panel.append(warning,repair);
  const list=el('div');list.className='plan-review-list';panel.append(list);
  const label=el('label','Изменить тему или весь план'),input=el('textarea');input.id='plan-feedback';input.maxLength=4000;input.placeholder='Например: замени тему второй категории на приключения';label.htmlFor=input.id;
  const change=el('button','Обновить план'),confirm=el('button','Подтвердить и создать карточки');change.type=confirm.type='button';confirm.className='primary';change.className='plan-change';
  const note=el('p','Коррекция — отдельный текстовый запрос планировщика. Изображения при этом не генерируются.'),status=el('p');status.setAttribute('role','status');panel.append(label,input,change,note,confirm,status);
- let key='',working=false;
- const act=async(fn)=>{if(working)return;working=true;for(const b of panel.querySelectorAll('button'))b.disabled=true;status.textContent='Сохраняем изменения…';try{await fn();}catch(e){status.textContent=e.message;}finally{working=false;for(const b of panel.querySelectorAll('button'))b.disabled=false;}};
+ let key='',working=false,blocked=false;
+ const act=async(fn)=>{if(working)return;working=true;for(const b of panel.querySelectorAll('button'))b.disabled=true;status.textContent='Сохраняем изменения…';try{await fn();}catch(e){status.textContent=e.message;}finally{working=false;for(const b of panel.querySelectorAll('button'))b.disabled=false;confirm.disabled=blocked;}};
+ repair.onclick=()=>act(()=>revise('Исправь ошибку проверки плана. Для каждого предмета укажи 2–3 конкретные проверки конструкции: число деталей, их реальные соединения или рабочее расположение. Сохрани предметы, категории и порядок.'));
  change.onclick=()=>act(()=>revise(input.value));confirm.onclick=()=>act(approve);
  return {panel,update(pending){
- const review=!!pending?.planResult&&!pending.runId&&!pending.planApproved;panel.hidden=!review;if(!review)return;
+ const review=!!pending?.planResult&&!pending.runId&&!pending.planApproved;panel.hidden=!review;if(!review)return;blocked=!!pending.planValidationError;warning.hidden=repair.hidden=!blocked;warning.textContent=pending.planValidationError||'';confirm.disabled=blocked;
  const signature=pending.planId;if(signature===key)return;key=signature;input.value='';status.textContent='';list.replaceChildren();
  for(const c of pending.planResult.collections||[]){
  const group=el('section');group.className='plan-review-category';group.append(el('h3',c.name),el('p',c.coherence_rationale||''));const items=el('ol');

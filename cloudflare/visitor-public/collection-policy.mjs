@@ -27,7 +27,7 @@ export function validateCategoryInventory(objects){
   if(/\b(alcohol|wine|beer|liquor|whisky|whiskey|vodka|rum|champagne|cocktail|cigarette|cigar|tobacco|hookah|vape|cocaine|heroin|cannabis|marijuana|erotic|porn|sexual|nude)\b|алкогол|водк|виск[и]|шампан|пив[оа]|сигар|табак|кальян|вейп|наркот|кокаин|героин|марихуан|эротик|порн/iu.test(identity))throw Error('Запрещённая взрослая тематика: замените предмет. Генерация не отправлена.');
   if(o.living_creatures!=='none')throw Error('Живые существа запрещены во всех C1–C4. Генерация не отправлена.');
   if(!semanticFamilies.includes(o.semantic_family))throw Error('Нужен тип предмета для проверки разнообразия.');
-  if(!Array.isArray(o.factual_checks)||o.factual_checks.length<2||o.factual_checks.some(s=>typeof s!=='string'||s.trim().length<12))throw Error('Нужны конкретные проверки конструкции предмета.');
+  validateFactualChecks(o);
   counts.set(o.semantic_family,(counts.get(o.semantic_family)||0)+1);
  }
  const max=Math.max(1,Math.ceil(objects.length*.3)),min=Math.min(4,objects.length);
@@ -80,3 +80,9 @@ export function validateNarrativeSequence(objects){
 export function validateUniqueSubjects(objects){const seen=new Set(),semantic=new Set();for(const o of objects){const name=String(o.main_identity||o.name||o.object_id||'').trim().toLowerCase().replace(/^(?:a|an|the)\s+/,'').replace(/\s+/g,' ');const key=/\bdomino(?:es|s)?\b|домино/iu.test(name)?'subject:domino':name;if(seen.has(key))throw Error('Повторяется один и тот же предмет в коллекции. Замените дубль другим объектом.');seen.add(key);if(o.subject_semantic_key){const normalized=o.subject_semantic_key.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();if(!normalized||semantic.has(normalized))throw Error('Смысловой дубль предмета: замените повтор отдельной стороной темы.');semantic.add(normalized);}}}
 export function validatePlannerPresentation(objects){const facets=new Set();for(const o of objects){if(!o.display_name?.trim()||o.display_name.length>80||o.display_name===o.object_id||/\bC[1-4]\b/.test(o.display_name))throw Error('Нужно короткое название карточки без технических ID и категории.');if(!o.subject_semantic_key?.trim()||!o.theme_facet?.trim())throw Error('Нужны смысловая идентичность и отдельная сторона темы.');const facet=o.theme_facet.toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();if(!facet||facets.has(facet))throw Error('Карточки повторяют одну сторону темы.');facets.add(facet);}}
 
+
+export function validateFactualChecks(o){
+ const checks=o.factual_checks;
+ const generic=/^(?:correct construction|correct proportions|correct perspective|looks correct|physically accurate|proper construction|правильная конструкция|правильные пропорции|правильная перспектива|без ошибок)[.!]?$/i;
+ if(!Array.isArray(checks)||checks.length<2||checks.some(s=>typeof s!=='string'||s.trim().length<3||generic.test(s.trim())))throw Error('Проверки конструкции: '+(o.display_name||o.main_identity||o.object_id)+'. Нужны минимум две конкретные проверки деталей или соединений.');
+}

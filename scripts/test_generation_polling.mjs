@@ -35,4 +35,7 @@ c.context.fetch=async(url,options={})=>{if(url==='/api/preflight')return Respons
 await vm.runInContext("reviseGenerationPlan('', ['card-a'])",c.context);for(let i=0;i<100&&!revisionPosts;i++)await new Promise(resolve=>setImmediate(resolve));
 const revised=JSON.parse(store.get(key));assert.equal(revisionPosts,1);assert.equal(runPosts,1,'Revision sends no additional image request');assert.equal(revised.pending.planApproved,false);assert.equal(revised.pending.runId,undefined);assert.equal(revised.plan_history[0].planId,'planner_review');assert.equal(revised.pending.planId,'planner_revised');
 console.log('PASS empty optional feedback rejects one item, preserves plan history and waits for new review; one mocked text request, no image request.');
+const invalid=JSON.parse(store.get(key));invalid.pending.planResult=reviewPlan;invalid.pending.planValidationError='Проверки конструкции: fixture';store.set(key,JSON.stringify(invalid));
+await assert.rejects(()=>vm.runInContext('approveGenerationPlan()',c.context),e=>e.message.includes('Сначала уточните текстовый план'));
+assert.equal(JSON.parse(store.get(key)).pending.planApproved,false);assert.equal(runPosts,1);console.log('PASS invalid construction draft cannot be approved or send images.');
 

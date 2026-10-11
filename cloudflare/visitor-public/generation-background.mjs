@@ -60,7 +60,7 @@ export async function startGeneration(name,wishes,advanced={}){
 }
 
 export async function approveGenerationPlan(){
- const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');plannedCollection(p.draft,p.planResult);p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
+ const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');if(p.planValidationError)throw Error(p.planValidationError+' Сначала уточните текстовый план.');plannedCollection(p.draft,p.planResult);p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
  if(navigator.locks)await navigator.locks.request('playrix-generation-step',approve);else approve();tick();
 }
 export async function reviseGenerationPlan(instruction,rejectedObjectIds=[]){
@@ -93,9 +93,9 @@ async function step(){
     if(!p.runId){
       const plan=p.planResult?{status:'complete',stage:'complete',result:{plan:p.planResult}}:await api('/api/planner?id='+encodeURIComponent(p.planId));
       publish({phase:'running',message:plannerProgress(plan,Date.now()-p.startedAt)});
-      if(plan.result?.validation_error)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
+      if(plan.result?.validation_error&&!plan.result?.plan)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
-        if(!p.planResult){commitPending({planResult:plan.result.plan,planApproved:false},p.plannerKey);publish({phase:'review',message:'План готов. Проверьте темы и предметы перед созданием карточек.'});return;}
+        if(!p.planResult){commitPending({planResult:plan.result.plan,planApproved:false,planValidationError:plan.result.validation_error||null},p.plannerKey);publish({phase:'review',message:'План готов. Проверьте темы и предметы перед созданием карточек.'});return;}
         if(!p.planApproved){publish({phase:'review',message:'План готов. Можно изменить его текстом или подтвердить генерацию карточек.'});return;}
         let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
         publish({phase:'running',message:'План готов · '+plan.result.plan.collections.map(c=>c.name).join(' / ')+' · передаём карточки в очередь'});
