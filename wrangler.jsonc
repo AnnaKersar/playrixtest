@@ -53,6 +53,7 @@
   },
   "vars": {
     "LIVE_GENERATION_ENABLED": "true",
+    "GUEST_PAID_GENERATION_ENABLED": "true",
     "LIVE_PLANNER_ENABLED": "true"
   },
   "compatibility_flags": [

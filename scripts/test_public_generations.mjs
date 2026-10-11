@@ -10,7 +10,7 @@ import {createVisitorEntry} from '../cloudflare/visitor-entry.mjs';
 const db=new DatabaseSync(':memory:');db.exec(await fs.readFile('cloudflare/schema.sql','utf8'));
 function statement(sql,args=[]){return {bind(...values){return statement(sql,values);},async first(){return db.prepare(sql).get(...args)||null;},async all(){return {results:db.prepare(sql).all(...args)};},async run(){return {meta:{changes:Number(db.prepare(sql).run(...args).changes)}};}};}const DB={prepare:statement};
 const blobs=new Map(),bucket={async put(k,v){blobs.set(k,v);},async head(k){return blobs.has(k)?{}:null;},async get(k){if(!blobs.has(k))return null;const v=blobs.get(k);return {body:new Blob([v]).stream(),text:async()=>v,json:async()=>JSON.parse(v)};}};
-const env={DB,ARTIFACTS:bucket,IMAGE_JOBS:{send:async()=>{}},PUBLIC_ASSETS:{fetch:async()=>new Response('test')},LIVE_GENERATION_ENABLED:'true',LIVE_PLANNER_ENABLED:'true',OPENAI_API_KEY:'synthetic-never-sent'};
+const env={GUEST_PAID_GENERATION_ENABLED:'true',DB,ARTIFACTS:bucket,IMAGE_JOBS:{send:async()=>{}},PUBLIC_ASSETS:{fetch:async()=>new Response('test')},LIVE_GENERATION_ENABLED:'true',LIVE_PLANNER_ENABLED:'true',OPENAI_API_KEY:'synthetic-never-sent'};
 const req=path=>new Request('https://example.invalid'+path),owner={role:'owner',principalId:'owner'};
 db.exec('UPDATE budget SET approved=1,ceiling=100000000000');
 const run=(id,principal,mode='live')=>db.prepare('INSERT INTO runs VALUES (?,?,?,?,?,?,?)').run(id,mode,'PRIVATE NAME EMAIL SECRET','private/'+id,'sha','2026-10-11T06:00:00Z',principal);
@@ -25,8 +25,8 @@ attempts('estimated',7000000000,100);assert.equal((await budgetState(env)).guest
 attempts('unknown-guest',2500000000,null,'unknown');const before=db.prepare('SELECT * FROM attempts WHERE job_id=?').get('unknown-guest');await reconcilePreviousAttempts(env,owner);assert.deepEqual(db.prepare('SELECT * FROM attempts WHERE job_id=?').get('unknown-guest'),before);
 const worker=createWorker({authenticate:async()=>owner});const maintenance=await worker.fetch(new Request('https://example.invalid/api/budget/unknown-reserve',{method:'POST',headers:{Origin:'https://example.invalid','Content-Type':'application/json'},body:JSON.stringify({reservation:1000000000,acknowledgeUnknownCost:true})}),env);assert.equal(maintenance.status,200,await maintenance.clone().text());assert.deepEqual(db.prepare('SELECT * FROM attempts WHERE job_id=?').get('unknown-guest'),before);
 assert.equal((await budgetState(env)).guest_remaining,500000000);assert.equal(await claimPaid(env,'blocked-after-timeout',1,'guest-b'),false);assert.equal(await claimPaid(env,'blocked-owner',1,'owner'),false);
-console.log('PASS unknown guest reservation survives automatic and manual owner maintenance; estimates never refund');
-db.exec("UPDATE attempts SET status='closed_reserved_unknown' WHERE job_id='unknown-guest'");
+console.log('PASS unknown guest reservation survives automatic and manual owner maintenance; legacy estimates never refund');
+db.exec("UPDATE attempts SET status='complete',actual=reservation WHERE job_id='unknown-guest'");
 const claims=await Promise.all([claimPaid(env,'last-slot-a',500000000,'guest-a'),claimPaid(env,'last-slot-b',500000000,'guest-b'),claimPaid(env,'last-slot-a',500000000,'guest-a')]);assert.equal(claims.filter(Boolean).length,1);assert.equal((await budgetState(env)).guest_remaining,0);
 // Simulate a committed INSERT whose acknowledgement is lost: replay cannot claim it again.
 db.exec("UPDATE attempts SET status='complete',actual=reservation WHERE job_id LIKE 'last-slot-%'");assert.equal(await claimPaid(env,'last-slot-a',500000000,'guest-a'),false);assert.equal(await claimPaid({...env},'new-session-after-redeploy',1,'guest-new'),false);
@@ -36,6 +36,7 @@ db.exec("UPDATE attempts SET status='complete',actual=reservation WHERE job_id='
 const lostAck={...env,DB:{prepare(sql){const s=statement(sql);if(!sql.startsWith('INSERT OR IGNORE INTO attempts'))return s;return {bind(...args){const bound=s.bind(...args);return {async run(){await bound.run();throw Error('Commit succeeded; response lost');}};}};}}};
 await assert.rejects(claimPaid(lostAck,'lost-ack',100000000,'owner'),/response lost/);assert.equal(await claimPaid(env,'lost-ack',100000000,'owner'),false);assert.equal(db.prepare("SELECT COUNT(*) n FROM attempts WHERE job_id='lost-ack'").get().n,1);
 console.log('PASS injected database commit acknowledgement loss cannot duplicate a paid claim');
+env.GUEST_PAID_GENERATION_ENABLED='false';
 const frozen=JSON.stringify({objects:[{object_id:'SECRET_TOKEN',generation:{mode:'whole_card'},living_creatures:'none'}]});blobs.set('private/private-run-guest',frozen);db.prepare('UPDATE runs SET frozen_sha=? WHERE id=?').run(await sha(frozen),'private-run-guest');let paidCalls=0;
 await processJob(env,'private-job-3',{provider:async()=>{paidCalls++;throw Error('Must never send');},processing:{event:async()=>{},end:async()=>{}}});assert.equal(db.prepare('SELECT status FROM jobs WHERE id=?').get('private-job-3').status,'blocked');assert.equal(db.prepare('SELECT * FROM attempts WHERE job_id=?').get('private-job-3'),undefined);
 blobs.set('secret-prompt','{}');db.prepare('UPDATE planner_requests SET input_sha=?').run(await sha('{}'));await processPlan(env,'private-plan',async()=>{paidCalls++;throw Error('Must never send');});assert.equal(db.prepare('SELECT status FROM planner_requests').get().status,'blocked');assert.equal(paidCalls,0);
@@ -43,4 +44,4 @@ console.log('PASS queued image and planner guest work blocked before claim even 
 const visitor=createVisitorEntry();assert.equal((await visitor.fetch(req('/api/studies'),env)).status,401);assert.equal((await visitor.fetch(req('/api/generations'),env)).status,200);assert.equal((await visitor.fetch(req('/generations'),env)).status,200);
 const quote=await(await publicGuestBudget(req('/api/guest/budget?cards=30'),env)).json();assert.equal(quote.remaining_nanodollars,0);assert.equal(quote.quote_nanodollars,null);assert.equal(quote.generation_enabled,false);assert.equal(quote.card_count,30);assert(!JSON.stringify(quote).includes('principal'));assert.equal((await publicGuestBudget(req('/api/guest/budget?cards=31'),env)).status,400);
 const game=await fs.readFile('cloudflare/visitor-public/minigame.html','utf8');assert(game.indexOf('href="/game-results.html"')<game.indexOf('id="game-grid"'));
-console.log('PASS anonymous history/budget, private API unchanged, unknown price fails closed, results before play');db.close();
+console.log('PASS anonymous history/budget, private API unchanged, disabled gate remains closed, results before play');db.close();

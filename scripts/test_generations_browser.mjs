@@ -2,14 +2,15 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-const root='cloudflare/visitor-public';let paidCalls=0;
+const root='cloudflare/visitor-public';let paidCalls=0,sessionIssued=false;
 const server=http.createServer(async(req,res)=>{
  const path=new URL(req.url,'http://localhost').pathname;
  const json=(value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
+ if(path==='/api/guest/session'&&req.method==='POST'){sessionIssued=true;json({role:'anonymous-guest',principalId:'fixture-guest'});return;}
  if(req.method!=='GET'){if(['/api/runs','/api/plan-live'].includes(path))paidCalls++;json({},405);return;}
  if(path==='/api/generations'){json({items:[{id:'opaque',kind:'images',mode:'live',source:'admin',created_at:'2026-10-11T06:00:00Z',status:'failed',cards:[{label:'Карточка 1',status:'complete',image_url:'/game-art/cards-emblem.png'},{label:'Карточка 2',status:'failed',image_url:null}]}],next_offset:null});return;}
  if(path==='/api/guest/budget'){json({remaining_nanodollars:7500000000,ceiling_nanodollars:10000000000,committed_nanodollars:2500000000,card_count:10,generation_enabled:false,quote_nanodollars:null});return;}
- if(path==='/api/preflight'){json({},401);return;}
+ if(path==='/api/preflight'){if(!sessionIssued){json({},401);return;}json({role:'generator',principalId:'fixture-guest',live_enabled:true,missing:[],planner:{live:true,ready:true,missing:[]},budget:{guest_remaining:7500000000,live_blockers:[]}});return;}
  if(path.startsWith('/api/')){json({cards:[],references:[],runs:[]});return;}
  try{const name=path==='/'?'index.html':path==='/generations'?'generations.html':path.slice(1);const bytes=await fs.readFile(root+'/'+name);res.setHeader('Content-Type',/\.m?js$/.test(name)?'text/javascript':name.endsWith('.css')?'text/css':name.endsWith('.png')?'image/png':'text/html');res.end(bytes);}catch{res.writeHead(404);res.end();}
 });
@@ -36,11 +37,11 @@ try{
  await send('Network.enable');await send('Network.setCacheDisabled',{cacheDisabled:true});
  for(const path of ['/generations','/','/minigame.html']){
   await send('Page.navigate',{url:'http://127.0.0.1:'+server.address().port+path});
-  const ready=path==='/generations'?'document.querySelectorAll(".generation-run").length===1':path==='/'?'document.querySelector("#guest-budget-summary")?.textContent.includes("7,5")':'!!document.querySelector("#game-grid")';
+  const ready=path==='/generations'?'document.querySelectorAll(".generation-run").length===1':path==='/'?'document.querySelector("#guest-budget-summary")?.textContent.includes("7,5") && document.querySelector("#launch")?.disabled===false':'!!document.querySelector("#game-grid")';
   for(let i=0;i<80;i++){if(await ev(ready))break;await new Promise(r=>setTimeout(r,100));}assert(await ev(ready),'Page not ready '+path);
   for(const width of [1280,768,390,320]){await viewport(width);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Overflow '+path+' '+width);}
   if(path==='/generations'){assert(await ev('document.body.textContent.includes("Ошибка")'));await screenshot('generations-mobile');await viewport(1280);await screenshot('generations-desktop');}
-  if(path==='/'){assert(await ev('document.querySelector("#launch").disabled'));assert(await ev('document.querySelector("#guest-budget-quote")===null && document.querySelector("#guest-budget").children.length===1'));await screenshot('guest-budget-mobile');}
+  if(path==='/'){assert(await ev('document.querySelector("#launch").disabled===false'));assert(await ev('document.querySelector("#guest-budget-quote")===null && document.querySelector("#guest-budget").children.length===1'));await screenshot('guest-budget-mobile');}
   if(path==='/minigame.html')assert(await ev('Array.from(document.links).find(a=>a.pathname.endsWith("game-results.html")).getBoundingClientRect().top<document.querySelector("#game-grid").getBoundingClientRect().top'));
  }
  assert.equal(paidCalls,0);console.log('PASS generations, guest budget, results before play; 1280/768/390/320px no horizontal overflow; zero paid calls');

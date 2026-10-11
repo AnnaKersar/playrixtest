@@ -9,6 +9,7 @@ import {archivePublic,archiveImport} from './experiment-archive.mjs';
 import {importArchiveSeed} from './archive-seed.mjs';
 import {ownerIdentity,ownerLogin,ownerLogout} from './owner-session.mjs';
 import {sha} from './provider.mjs';
+import {guestPaidEnabled} from './budget.mjs';
 import {generationHistory,publicGuestBudget} from './generation-history.mjs';
 const json=(data,status=200,headers={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...headers}});
 async function throttle(env,ip,action,principal=''){
@@ -35,12 +36,12 @@ export async function sessionEndpoint(request,env){
  return json({principalId,role:'anonymous-guest'},201,{'Set-Cookie':`__Host-card_guest=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000`});
 }
 const publicPaths=new Set(['/generations','/generations/','/generations.html','/generations.js','/generations.css','/guest-budget.mjs','/archive/economics.html','/archive-economics.mjs','/test-comparison.mjs','/collection-download.mjs','/card-edit-background.mjs','/card-edit-background.css','/card-editor','/card-editor/','/card-editor.html','/card-editor.js','/card-editor.css','/round-images.mjs','/game-results','/game-results/','/game-results.html','/game-results.js','/minigame','/minigame/','/minigame.html','/minigame.js','/minigame.css','/generation-background.mjs','/generation-background.css','/generator.js','/card-actions.mjs','/generation-progress.mjs','/generator-model.mjs','/collection-policy.mjs','/generator.css','/studio/workspace.js','/studio/editor-bridge.js','/studio/flow-model.mjs','/studio/style.css','/studio/workspace.css','/ui.css','/home.css','/demo.html','/owner-navigation.mjs','/references','/references/','/references.html','/references.js','/references.css','/','/index','/index/','/index.html','/demo.js','/demo.css','/owner','/owner/','/owner.html','/owner.js','/archive','/archive/','/archive.html','/archive.js','/archive.css']);
-const readPaths=new Set(['/api/studies','/api/run','/api/asset','/api/image-info']);
+const readPaths=new Set(['/api/preflight','/api/planner','/api/studies','/api/run','/api/asset','/api/image-info']);
 // Cloudflare static assets canonicalize economics.html to the extensionless URL.
 for(const path of ['/archive/economics','/archive/economics/'])publicPaths.add(path);
 for(const file of ['', '/', '/index.html', '/style.css', '/test.json', ...['ref','gpt-latest','flux-lora','flux-base'].flatMap(group=>['cup','basket'].map(object=>'/'+group+'-'+object+'.png'))])publicPaths.add('/archive/latest-lora-test'+file);
 for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json'])publicPaths.add('/archive-seed/history-v1/'+file);
-const writePaths=new Set(['/api/runs','/api/candidates','/api/choices']);
+const writePaths=new Set(['/api/plan-live','/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
 export function createPublicGuestWorker(backend){return {
  async fetch(request,env){const url=new URL(request.url);
@@ -72,15 +73,17 @@ export function createPublicGuestWorker(backend){return {
    if(request.method==='POST'&&request.headers.get('Origin')!==url.origin)return json({error:'Same-origin request required'},403);
    if(url.pathname==='/api/asset'&&(url.searchParams.get('kind')||'final')!=='final')return json({error:'Private source artifact unavailable'},403);
    const ip=request.headers.get('CF-Connecting-IP');if(!ip)return json({error:'Trusted edge client address unavailable'},503);
-   if(!await throttle(env,ip,url.pathname==='/api/runs'?'run':'api',identity.principalId))return json({error:'Guest request limit reached'},429,{'Retry-After':'60'});
-   if(url.pathname==='/api/runs'){
+   if(!await throttle(env,ip,['/api/runs','/api/plan-live'].includes(url.pathname)?'run':'api',identity.principalId))return json({error:'Guest request limit reached'},429,{'Retry-After':'60'});
+   if(['/api/runs','/api/plan-live'].includes(url.pathname)){
     const length=Number(request.headers.get('Content-Length')||0);if(length>2000000)return json({error:'Body too large'},413);
-    // Bounded read before parsing; no request can enable live or select private reference packs.
+    // Bounded input. Live access follows server policy, never caller role/flags.
     const reader=request.clone().body.getReader();let count=0;const chunks=[];while(true){const{value,done}=await reader.read();if(done)break;count+=value.length;if(count>2000000){await reader.cancel();return json({error:'Body too large'},413);}chunks.push(value);}const body=JSON.parse(await new Blob(chunks).text());
-    if(body.mode&&body.mode!=='mock')return json({error:'Public paid generation is disabled until public asset sharing and cost bounds are approved'},403);
-    if(!Array.isArray(body.objects)||body.objects.length!==1)return json({error:'Public test allows one synthetic mock object per run'},400);
+    if((url.pathname==='/api/plan-live'||body.mode==='live')&&!guestPaidEnabled(env))return json({error:'Guest paid generation disabled'},403);
+    if(url.pathname==='/api/runs'&&body.mode!=='live'&&(!Array.isArray(body.objects)||body.objects.length!==1))return json({error:'Public test allows one synthetic mock object per run'},400);
    }
-   return await backend(request,{...env,LIVE_GENERATION_ENABLED:'false',LIVE_PLANNER_ENABLED:'false'},identity);
+   const response=await backend(request,env,identity);
+   if(url.pathname==='/api/planner'&&response.ok){const data=await response.json();return json({id:data.id,status:data.status,stage:data.stage,started_at:data.started_at,result:data.result?{plan:data.result.plan||null,validation_error:data.result.validation_error?'Plan requires review':null}:null});}
+   return response;
   }catch{return json({error:'Guest storage/configuration unavailable'},503);}
  },
  async queue(){throw Error('Public entry cannot execute a paid queue; use separately guarded worker job processing.');}

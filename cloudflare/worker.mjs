@@ -11,7 +11,7 @@ import {compileObjectPrompt,OBJECT_CONTENT_POLICY_VERSION} from './object-conten
 import {referenceEnvironment} from './reference-import.mjs';
 import {experimentContext,journalPrepare,journalEvent,journalRead,journalFeedback} from './experiment-journal.mjs';
 import {ownerOnly,generationRole,runAccess,jobAccess,redactRun} from './roles.mjs';
-import {budgetState,claimPaid,reservationFor} from './budget.mjs';
+import {budgetState,claimPaid,reservationFor,guestPaidEnabled} from './budget.mjs';
 import {createPlan,processPlan,recoverPlan,plannerConfiguration} from './text-planner.mjs';
 import {privateEditor} from './private-editor.mjs';
 import { authenticate } from './auth.mjs';
@@ -62,10 +62,10 @@ async function createRun(env,body,auth,options={}){
   const mode=body.mode||'mock';if(!['mock','live'].includes(mode))fail(400,'Invalid mode');const objects=body.objects;
   if(!Array.isArray(objects)||!objects.length||objects.length>30||new Set(objects.map(o=>o.object_id)).size!==objects.length||objects.some(o=>!safeId(o.object_id)||o.object_id.length>60||typeof o.brief!=='string'||!o.brief.trim()||o.brief.length>12000))fail(400,'Provide 1-30 distinct IDs and briefs');
   let manifest=null;if(mode==='live')validateUniqueSubjects(objects);if(mode==='live'){
-    if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)fail(403,'Live generation disabled');
+    if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY||auth.principalId!=='owner'&&!guestPaidEnabled(env))fail(403,'Live generation disabled');
     if(objects.some(o=>!['C1','C2','C3','C4'].includes(o.category)||o.generation_mode!=='whole_card'))fail(409,'Эта коллекция должна генерироваться целиком. Обновите страницу перед новым запуском; модульная генерация отключена.');
     if(body.approval!=='I approve one paid attempt per object')fail(400,'Explicit per-run paid approval required');
-    const budget=await one(env,'SELECT * FROM budget WHERE id=1');if(!budget?.approved)fail(409,'Approved budget baseline required');const state=await budgetState(env);if(state.live_blockers.length)fail(409,state.live_blockers.join(', '));reservationFor(env,'image',auth.principalId);manifest=(await references(env,{manifestOnly:true})).manifest;
+    const budget=await one(env,'SELECT * FROM budget WHERE id=1');if(!budget?.approved)fail(409,'Approved budget baseline required');const state=await budgetState(env);if(state.live_blockers.length)fail(409,state.live_blockers.join(', '));if(auth.principalId!=='owner'&&state.guest_remaining<=0)fail(409,'Shared guest budget exhausted');reservationFor(env,'image',auth.principalId);manifest=(await references(env,{manifestOnly:true})).manifest;
   }
   if(body.planner_request_id!==undefined){if(!safeId(body.planner_request_id))fail(400,'Invalid planner request');const origin=await one(env,'SELECT principal_id FROM planner_requests WHERE id=?',body.planner_request_id);if(!origin||origin.principal_id!==auth.principalId)fail(403,'Planner origin access denied');}
   if(body.requestId!==undefined&&!safeId(body.requestId))fail(400,'Invalid stable request ID');
@@ -119,7 +119,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
   },{output_bytes:final.length});
   await processing.stage('final_d1_status',()=>env.DB.batch([
     query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),
-    query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),
+    query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),
     query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)
   ]));
   await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:savedFrozen.final});
@@ -184,7 +184,7 @@ export async function processJob(env,jobId,deps={}){
     await processing.end('collection_policy_required');return;
   }
   let sheets=[],validatedHashes=[];if(run.mode==='live'){
-    if(run.principal_id!=='owner'){await query(env,"UPDATE jobs SET status='blocked' WHERE id=?",job.id).run();await processing.end('guest_paid_gate_closed');return;}
+    if(run.principal_id!=='owner'&&!guestPaidEnabled(env)){await query(env,"UPDATE jobs SET status='blocked' WHERE id=?",job.id).run();await processing.end('guest_paid_gate_closed');return;}
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY)throw Error('Live disabled before claim');
     if(frozen.reference_manifest_sha!==env.APPROVED_REFERENCE_MANIFEST_SHA256||frozen.art_direction_sha!==env.APPROVED_ART_DIRECTION_SHA256)throw Error('Frozen pins changed');await processing.event('checking_references','started');const {manifest}=await references(env,{manifestOnly:true});const prepared=await prepareSheets(env,manifest,job.id,processing);if(!prepared)return;sheets=prepared.sheets;validatedHashes=prepared.hashes;await processing.event('references_checked','succeeded');
   }
@@ -209,7 +209,7 @@ export async function processJob(env,jobId,deps={}){
     await processing.stage('receipt_d1_status',async()=>{
     await query(env,"UPDATE attempts SET status='received',receipt_key=? WHERE job_id=?",receiptKey,job.id).run();
     // The provider receipt is durable: settle known usage before a separate CPU-heavy finalization job.
-    if(cost!==null){await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=? WHERE job_id=?",cost,cost,job.id).run();}
+    if(cost!==null){await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=? WHERE job_id=?",cost,cost,job.id).run();}
     });
     await sendFinalization(env,job,processing);
   }catch(error){
@@ -312,7 +312,7 @@ export function createWorker(deps={}){return {
       if(url.pathname==='/api/journal'&&request.method==='GET'){ownerOnly(auth);return json(await journalRead(env,url.searchParams.get('attempt')));}
       if(url.pathname==='/api/journal/feedback'&&request.method==='POST'){ownerOnly(auth);return json(await journalFeedback(env,await bodyJSON(request)));}
       if(url.pathname.startsWith('/editor/')&&request.method==='GET')return await privateEditor(request,env);
-      if(url.pathname==='/api/preflight'&&request.method==='GET'){const state=await readiness(env);if(auth.role!=='owner'){state.budget=state.budget?{guest_ceiling:state.budget.guest_ceiling,guest_remaining:state.budget.guest_remaining,live_blockers:state.budget.live_blockers}:null;delete state.live_missing;}return json({...state,role:auth.role,principalId:auth.principalId});}
+      if(url.pathname==='/api/preflight'&&request.method==='GET'){const state=await readiness(env);if(auth.role!=='owner'){const blockers=[...(state.budget?.live_blockers||[])];if(!guestPaidEnabled(env))blockers.push('guest_paid_disabled');if(state.budget?.guest_remaining<=0)blockers.push('shared_guest_budget_exhausted');if(state.budget?.remaining<10000000000)blockers.push('project_budget_unavailable');return json({version:state.version,role:auth.role,principalId:auth.principalId,mock_ready:state.mock_ready,live_enabled:guestPaidEnabled(env)&&state.live_enabled&&state.live_missing.length===0,missing:state.missing.length?['configuration_unavailable']:[],planner:{live:guestPaidEnabled(env)&&state.planner.live,ready:state.planner.ready,missing:state.planner.missing.length?['planner_configuration_unavailable']:[]},budget:state.budget?{guest_ceiling:state.budget.guest_ceiling,guest_remaining:state.budget.guest_remaining,live_blockers:blockers}:null});}return json({...state,role:auth.role,principalId:auth.principalId});}
       if(url.pathname.startsWith('/api/')){
         await requireReady(env,url.pathname);
         if(request.method==='GET'){
@@ -419,7 +419,7 @@ export async function reconcilePreviousAttempts(env,auth){
    const receipt=await getJSON(env,key),cost=job?(receipt.cost??usageCost(receipt.usage)):null;
    if(Number.isSafeInteger(cost)&&cost>=0){
     await journalEvent(env,a.job_id,'auto-accounting-settled-'+cost,'automatic_accounting_reconciliation',{principal_id:auth.principalId,actual_cost_nanodollars:cost,receipt_key:key,provider_calls:0});
-    await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,receipt_key=? WHERE job_id=? AND (status<>'complete' OR actual IS NULL)",cost,cost,key,a.job_id).run();report.settled++;continue;
+    await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,receipt_key=? WHERE job_id=? AND (status<>'complete' OR actual IS NULL)",cost,cost,key,a.job_id).run();report.settled++;continue;
    }
    // Preserve the receipt even when its usage does not establish a price.
    if(!stale&&!cancelled){report.still_running++;continue;}
