@@ -1,0 +1,1 @@
+export function testComparison(votes,ids,rounds){const ours=new Set(ids),groups={ours:{votes:0,shown:0},refs:{votes:0,shown:0}};for(const v of votes){const g=ours.has(v.card)?groups.ours:groups.refs;g.votes+=Number(v.votes)||0;g.shown+=Number(v.shown)||0;}return {...groups,rounds:Number(rounds?.rounds)||0,found:Number(rounds?.found)||0};}
