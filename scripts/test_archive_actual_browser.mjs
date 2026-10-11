@@ -92,6 +92,7 @@ try{
   for(let i=0;i<60;i++){if(await ev('document.querySelectorAll("#comparison-table tbody tr").length===6'))break;await new Promise(r=>setTimeout(r,100));}
   assert.equal(await ev('document.querySelectorAll("#comparison-table tbody tr").length'),6);
   assert.equal(await ev('document.querySelectorAll("table").length'),1);
+  assert(await ev('document.getElementById("gd-salary-basis").textContent.includes("16,1625") && !document.getElementById("gd-salary-basis").closest("details")'));
   assert(await ev('document.getElementById("collection-cost").textContent.includes("1,79")'));
   assert(await ev('document.getElementById("break-even").textContent.includes("60 карточек")'));
   assert.equal(await ev('document.querySelectorAll(".economics-cash-break-even").length'),3);
