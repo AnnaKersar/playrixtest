@@ -94,6 +94,9 @@ try{
   assert.equal(await ev('document.querySelectorAll("table").length'),1);
   assert(await ev('document.getElementById("collection-cost").textContent.includes("1,79")'));
   assert(await ev('document.getElementById("break-even").textContent.includes("40 карточек")'));
+  assert.equal(await ev('document.querySelectorAll(".economics-cash-break-even").length'),3);
+  assert(await ev('document.querySelector(".archive-counts").textContent.includes("95,1%")'));
+  assert.equal(await ev('document.getElementById("artist-hours").value'),'8');
   assert(await ev('!document.body.textContent.includes("NaN")'));
   for(const width of [1280,768,390,320]){await viewport(width,844);assert(await ev('document.documentElement.scrollWidth<=innerWidth'),'Economics overflow at '+width);}
   await ev('document.getElementById("comparison-table").scrollIntoView()');await screenshot('economics-mobile');
