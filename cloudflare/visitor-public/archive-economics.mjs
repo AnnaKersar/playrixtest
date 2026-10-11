@@ -1,31 +1,46 @@
 export const TARGETS=[10,30,100,300,1000,10000];
-export const PRODUCER_RATE=140000/2080;
-export const FIXED=140+40*PRODUCER_RATE;
+export const FIXED=140+40*(140000/2080);
 export const artistRate=salary=>salary*1.1206/2080;
-export function scenario(n,{yieldPercent,cost,qaMinutes,seconds,planner,infra,concurrency=1}){
- const values=[n,yieldPercent,qaMinutes,seconds,concurrency];
- if(values.some(v=>!Number.isFinite(v))||n<=0||yieldPercent<=0||yieldPercent>100||qaMinutes<0||seconds<0||concurrency<1)return null;
- const attempts=n/(yieldPercent/100),laborHours=attempts*qaMinutes/60,serviceHours=attempts*seconds/3600;
- const known=[cost,planner,infra].every(v=>Number.isFinite(v)&&v>=0);
- const variable=known?attempts*cost+planner+infra+laborHours*PRODUCER_RATE:null;
- return {attempts,laborHours,serviceHours,capacityHours:serviceHours/concurrency,fixedPerCard:FIXED/n,variable,perCard:variable===null?null:variable/n,total:variable===null?null:FIXED+variable};
+export const GRADES=[{label:'Junior',salary:17535},{label:'Middle',salary:30000},{label:'Senior',salary:43500}];
+export const DEFAULTS={cost:.1,yieldPercent:80,briefMinutes:2,designerRate:16.1625,artistHours:8};
+export function scenario(n,input=DEFAULTS){
+ const {cost,yieldPercent,briefMinutes,designerRate,artistHours}=input;
+ if(![n,cost,yieldPercent,briefMinutes,designerRate,artistHours].every(Number.isFinite)||n<=0||cost<0||yieldPercent<=0||yieldPercent>100||briefMinutes<0||designerRate<0||artistHours<=0)return null;
+ const attempts=n/(yieldPercent/100),briefHours=Math.ceil(n/10)*briefMinutes/60;
+ const variable=attempts*cost+briefHours*designerRate,total=FIXED+variable;
+ return {attempts,briefHours,variable,total,perCard:total/n,manualHours:n*artistHours,grades:GRADES.map(g=>({...g,cost:n*artistHours*artistRate(g.salary),difference:n*artistHours*artistRate(g.salary)-total}))};
+}
+export function breakEven(salary,input=DEFAULTS){
+ const s=scenario(10,input);if(!s)return null;
+ const margin=10*input.artistHours*artistRate(salary)-s.variable;
+ if(margin<=0)return {cards:null,collections:null};
+ const collections=Math.ceil(FIXED/margin)*10;
+ for(let n=Math.max(1,collections-9);n<=collections;n++){const cost=scenario(n,input);if(n*input.artistHours*artistRate(salary)>=cost.total)return {cards:n,collections};}
+ return {cards:collections,collections};
 }
 if(typeof document!=='undefined'){
  const el=id=>document.getElementById(id),num=id=>el(id).value.trim()===''?null:Number(el(id).value);
- const fmt=(v,d=2)=>v===null?'не задано':v.toLocaleString('ru-RU',{maximumFractionDigits:d,minimumFractionDigits:d});
- const money=v=>v===null?'не задано':'$'+fmt(v);
- function table(id,headers,rows){const t=document.createElement('table'),head=t.createTHead().insertRow();for(const text of headers){const th=document.createElement('th');th.scope='col';th.textContent=text;head.append(th);}const body=t.createTBody();for(const row of rows){const tr=body.insertRow();row.forEach((text,i)=>{const td=document.createElement(i?'td':'th');if(!i)td.scope='row';td.textContent=text;tr.append(td);});}el(id).replaceChildren(t);}
+ const fmt=(v,d=2)=>v.toLocaleString('ru-RU',{maximumFractionDigits:d,minimumFractionDigits:d});
+ const money=v=>'$'+fmt(v),signed=v=>(v>=0?'+':'−')+money(Math.abs(v));
  function render(){
-  const input={yieldPercent:num('yield'),cost:num('attempt-cost'),qaMinutes:num('qa-minutes'),seconds:num('provider-seconds'),planner:num('planner-cost'),infra:num('infra-cost'),concurrency:num('concurrency')};
-  const rows=TARGETS.map(n=>[n,scenario(n,input)]);
-  if(rows.some(([,s])=>!s)){el('scenario-status').textContent='Укажите долю приёмки от 1 до 100%, неотрицательные время/QA и параллелизм от 1.';el('production-table').replaceChildren();return;}
-  el('scenario-status').textContent=rows[0][1].variable===null?'Стоимость не рассчитана: задайте API, planner и инфраструктуру. Пустое поле не означает ноль.':'Плановый сценарий для НОВЫХ принятых карточек. Предположения выше редактируются; это не замер текущей партии.';
-  table('production-table',['Новых принятых N','Попыток, ожидание','Новый труд QA, ч','Сервис последовательно / при параллелизме, ч','Новые расходы V','V / карточка','F / карточка','R&D + новые расходы'],rows.map(([n,s])=>[fmt(n,0),fmt(s.attempts,1),fmt(s.laborHours,1),fmt(s.serviceHours,1)+' / '+fmt(s.capacityHours,1),money(s.variable),money(s.perCard),money(s.fixedPerCard),money(s.total)]));
-  const rate=artistRate(num('artist-salary'));
-  el('artist-rate').textContent='Salary-only ставка: '+money(rate)+'/ч (точно '+fmt(rate,6)+'). Для продюсера: '+money(PRODUCER_RATE)+'/ч. Работодательские начисления не включены.';
-  table('manual-table',['Принятых N','2 ч/карту: часы / зарплата','8 ч/карту: часы / зарплата','16 ч/карту: часы / зарплата'],TARGETS.map(n=>[fmt(n,0),...[2,8,16].map(h=>fmt(n*h,0)+' ч / '+money(n*h*rate))]));
-  const amounts=[['Прототип: всё R&D, 30 демо-карт',FIXED],...[2,8,16].map(h=>['Вручную: 30 карт × '+h+' ч (сценарий)',30*h*rate])];
-  el('economics-chart').replaceChildren(...amounts.map(([label,value])=>{const p=document.createElement('p'),meter=document.createElement('meter');p.textContent=label+' — '+money(value);meter.min=0;meter.max=Math.max(...amounts.map(x=>x[1]));meter.value=value;meter.setAttribute('aria-label',label);meter.textContent=money(value);p.append(meter);return p;}));
+  const input={cost:num('attempt-cost'),yieldPercent:num('yield'),briefMinutes:num('brief-minutes'),designerRate:num('designer-rate'),artistHours:num('artist-hours')};
+  const sample=scenario(10,input);
+  if(!sample){el('scenario-status').textContent='Заполните пять полей: приёмка 1–100%, время художника больше нуля, остальные значения неотрицательные.';el('comparison-table').replaceChildren();el('break-even').replaceChildren();el('collection-cost').textContent='—';el('running-card-cost').textContent='—';return;}
+  el('scenario-status').textContent='Допущения применены. После прототипа труд продюсера и отдельный QA: 0 часов.';
+  el('collection-cost').textContent=money(sample.variable);
+  el('running-card-cost').textContent=money(sample.variable/10);
+  el('scenario-summary').textContent='Сценарий: '+money(input.cost)+' за API-попытку, '+fmt(input.yieldPercent,0)+'% приёмки, '+fmt(input.briefMinutes,1)+' мин на бриф коллекции и '+fmt(input.artistHours,1)+' ч ручной работы на карту.';
+  const headers=['Новых карт','AI: новые расходы','AI: с прототипом','Художник Junior','Художник Middle','Художник Senior'];
+  const table=document.createElement('table'),head=table.createTHead().insertRow();
+  for(const h of headers){const th=document.createElement('th');th.scope='col';th.textContent=h;head.append(th);}
+  const body=table.createTBody();
+  for(const n of TARGETS){
+   const s=scenario(n,input),tr=body.insertRow(),th=document.createElement('th');th.scope='row';th.textContent=fmt(n,0);tr.append(th);
+   const cells=[{value:money(s.variable)},{value:money(s.total),sub:money(s.perCard)+' / карта'},...s.grades.map(g=>({value:money(g.cost),sub:signed(g.difference)+' для AI',difference:g.difference}))];
+   cells.forEach((c,i)=>{const td=tr.insertCell();td.dataset.label=headers[i+1];const strong=document.createElement('strong');strong.textContent=c.value;td.append(strong);if(c.sub){const small=document.createElement('small');small.textContent=c.sub;if(c.difference!==undefined)small.className=c.difference>=0?'positive':'negative';td.append(small);}});
+  }
+  el('comparison-table').replaceChildren(table);
+  el('break-even').replaceChildren(...GRADES.map(g=>{const b=breakEven(g.salary,input),p=document.createElement('p'),strong=document.createElement('strong');p.append('Против '+g.label);strong.textContent=b.collections===null?'Не окупается':fmt(b.collections,0)+' карточек';p.append(strong);const small=document.createElement('small');small.textContent=b.cards===null?'Новые расходы не ниже ручных.':'Полными коллекциями по 10; точный порог — '+fmt(b.cards,0)+'.';p.append(small);return p;}));
  }
- document.querySelectorAll('input,select').forEach(input=>input.addEventListener('input',render));render();
+ document.querySelectorAll('#attempt-cost,#yield,#brief-minutes,#designer-rate,#artist-hours').forEach(input=>input.addEventListener('input',render));render();
 }

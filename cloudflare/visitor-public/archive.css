@@ -104,3 +104,19 @@ html{scroll-padding-top:24px;overflow-y:auto}
 .economics-bars meter{display:block;width:100%;height:1.4rem;margin:.4rem 0 1rem;accent-color:#426b4a}
 .archive-page main{min-width:0}
 @media(max-width:600px){.economics-inputs{grid-template-columns:1fr}.economics-bars p{overflow-wrap:anywhere}}
+.economics-simple .archive-header-inner{max-width:1280px;margin:auto}
+.economics-simple h1{font-size:clamp(2rem,4vw,3.2rem);max-width:1000px}
+.economics-simple main{max-width:1360px;margin:1.5rem auto;padding:0 1rem}
+.economics-simple .archive-panel{margin:0}
+.economics-simple .economics-footnote{font-size:.95rem;line-height:1.6;color:#466276}
+.economics-simple .economics-settings{margin-top:1.5rem;border-top:1px solid #bdcbd3;padding-top:1rem}
+.economics-simple .economics-settings summary{font-weight:750;cursor:pointer;padding:.5rem 0}
+.economics-simple .economics-break-even{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.economics-simple .economics-break-even p{padding:1rem;background:#eef7fb;border-radius:1rem;margin:0}
+.economics-simple .economics-break-even strong{display:block;font-size:1.4rem}
+.economics-simple td strong,.economics-simple td small{display:block}
+.economics-simple td small{margin-top:.35rem;font-size:.85rem}
+.economics-simple .positive{color:#22633e}.economics-simple .negative{color:#a13c26}
+.economics-simple table{font-variant-numeric:tabular-nums;font-size:.95rem}
+.economics-simple th,.economics-simple td{padding:.8rem .55rem}
+@media(max-width:700px){.economics-simple .economics-break-even{grid-template-columns:1fr}.economics-simple .archive-counts{grid-template-columns:1fr}.economics-simple table,.economics-simple tbody,.economics-simple tr,.economics-simple td,.economics-simple th{display:block;min-width:0;width:auto}.economics-simple thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.economics-simple tbody tr{border:1px solid #bdcbd3;border-radius:1rem;padding:.6rem;margin-bottom:1rem}.economics-simple tbody th{font-size:1.15rem;background:#eef7fb;border-radius:.6rem}.economics-simple tbody td{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;border-bottom:1px solid #e1e8ed}.economics-simple tbody td::before{content:attr(data-label);font-weight:650}.economics-simple tbody td small{grid-column:2}.economics-simple .archive-table-wrap{overflow:visible}}

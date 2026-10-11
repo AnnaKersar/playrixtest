@@ -55,9 +55,17 @@ visuals.schemes[3]={id:'architecture',title:'04 · Техническая арх
 {title:'Просмотр → edit → Apply',text:'Отдельная версия правки; явный выбор версии. Экспорт PNG bytes в ZIP.'}],note:'Исторический transparent foreground → procedural compositor — отдельная сохранённая ветка. Technical complete не означает художественную приёмку. Runtime parity и причина прежних зависаний этим аудитом не установлены.'};
 visuals.schemes[4].nodes[2]={title:'Выбрать ветку',text:'Новые live-карточки всех C1–C4 создаются whole_card; modular сохранён для исторических foreground и пересборки.'};
 const prompts=await Promise.all(['v1.1','v1.2'].map(async version=>({title:'Narrative collection designer '+version,filename:'narrative-collection-designer-'+version+'.md',text:await fs.readFile('prompts/narrative-collection-designer-'+version+'.md','utf8')})));
-const editorial={caseStudy,phases,schemes:visuals.schemes.map((s,i)=>({...s,body_markdown:frameworks.sections[i].body_markdown})),decisions:visuals.decisions,technical,art,game:frameworks.sections[5],frameworks,prompts,evolution};
+const loraReview=await fs.readFile(dir+'/lora-iteration-1.md','utf8');
+const editorial={caseStudy,phases,schemes:visuals.schemes.map((s,i)=>({...s,body_markdown:frameworks.sections[i].body_markdown})),decisions:visuals.decisions,technical,art,game:frameworks.sections[5],frameworks,prompts,evolution,loraReview};
 const path=publicDir+'/archive.js',source=await fs.readFile(path,'utf8');
 const updated=source.replace(/const archiveEditorial = [\s\S]*?\nfunction recordLink/,()=> 'const archiveEditorial = '+JSON.stringify(editorial,null,2)+';\nfunction recordLink');
 if(updated===source&&!source.includes(JSON.stringify(editorial,null,2)))throw Error('Editorial marker not found');
 await fs.writeFile(path,updated);
+const economicsPage=await fs.readFile(publicDir+'/archive/economics.html','utf8');
+const economicSection=economicsPage.match(/<section class="archive-panel"[\s\S]*?<\/section>/)?.[0];
+if(!economicSection)throw Error('Economics source section missing');
+const archivePath=publicDir+'/archive.html';let archiveHTML=await fs.readFile(archivePath,'utf8');
+archiveHTML=archiveHTML.replace(/<!-- economics:start -->[\s\S]*?<!-- economics:end -->\s*/,'');
+archiveHTML=archiveHTML.replace('<main id="archive-main">','<main id="archive-main">\n<!-- economics:start -->'+economicSection.replace('class="archive-panel"','id="economics" class="archive-panel economics-simple"')+'<!-- economics:end -->');
+await fs.writeFile(archivePath,archiveHTML);
 console.log('Built 10 author-reviewed phases, 5 diagrams, exact media mapping and full source documents.');

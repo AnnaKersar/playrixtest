@@ -35,7 +35,7 @@
     "latest_batch_duration_seconds": null,
     "interpretation": "Deduplicated card-browser pairs; selected means selected at least once by that browser. Not first-attempt acceptance, not independent people, not round counts."
   },
-  "planning_defaults_not_measurements": {"new_accepted_cards_beyond_demo":true,"yield_percent":80,"cost_per_attempt_usd":0.1,"qa_minutes_per_attempt":5,"provider_seconds_per_attempt":30,"planner_extra_usd":0,"infrastructure_extra_usd":0,"concurrency":1,"quality_equivalence_established":false},
+  "planning_defaults_not_measurements": {"new_accepted_cards_beyond_demo":true,"yield_percent":80,"cost_per_attempt_usd":0.1,"ongoing_producer_hours":0,"separate_art_qa_and_retouch_excluded":true,"brief_minutes_per_10_card_collection":2,"designer_usd_per_hour":16.1625,"designer_salary_is_proxy":true,"artist_hours_per_card_all_grades":8,"planner_extra_usd":0,"infrastructure_extra_usd":0,"quality_equivalence_established":false},
   "scenarios": [
     10,
     30,

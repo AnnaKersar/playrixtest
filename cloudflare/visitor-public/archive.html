@@ -21,6 +21,31 @@
 <p class="eyebrow">В ЭТОЙ ИСТОРИИ</p><a href="#overview">О проекте и источниках</a><a href="#editorial-phases">Этапы и решения</a><a href="#archive-schemes">Пять схем процесса</a><a href="#decision-timeline">Лента решений</a><a href="#history-catalog">Полный архив</a><a href="#generated-attempts">Новые попытки</a>
 </nav></aside>
 <main id="archive-main">
+<!-- economics:start --><section id="economics" class="archive-panel economics-simple" aria-labelledby="comparison-title">
+<h2 id="comparison-title">Один взгляд на расходы и разницу</h2>
+<dl class="archive-counts"><div><dt>Прототип, уже потрачено</dt><dd>$2 832,31</dd></div><div><dt>Следующая коллекция из 10 карт</dt><dd id="collection-cost">—</dd></div><div><dt>Новая карточка, без прототипа</dt><dd id="running-card-cost">—</dd></div></dl>
+<p id="scenario-summary"></p>
+<p class="economics-legend"><strong>+ в плюсе</strong> — ручной сценарий дороже. <strong>− в минусе</strong> — прототип с новой серией пока дороже.</p>
+<div id="comparison-table" class="archive-table-wrap"></div>
+<h3>Когда окупится прототип</h3><div id="break-even" class="economics-break-even"></div>
+<p class="economics-footnote">Объём — новые карточки сверх демо-партии. После прототипа считаем только API и ввод темы/брифа геймдизайнером. Ручная арт-приёмка, QA и ретушь исключены по выбранному сценарию. Разница условна: сопоставимое качество ещё нужно подтвердить.</p>
+<details class="economics-settings"><summary>Изменить 5 допущений и посмотреть источники</summary>
+<div class="economics-inputs">
+<label>API за попытку, $<input id="attempt-cost" type="number" min="0" step="0.01" value="0.10"></label>
+<label>Приёмка без новой попытки, %<input id="yield" type="number" min="1" max="100" value="80"></label>
+<label>Ввод брифа на 10 карт, минут<input id="brief-minutes" type="number" min="0" step="1" value="2"></label>
+<label>Геймдизайнер, $/час<input id="designer-rate" type="number" min="0" step="0.0001" value="16.1625"></label>
+<label>Ручная работа на карту, часов<input id="artist-hours" type="number" min="0.01" step="0.5" value="8"></label>
+</div><p id="scenario-status" role="status"></p>
+<p>Это редактируемые плановые допущения, не замеры текущей партии. API-ставка должна включать оплачиваемые запросы; дополнительные расходы planner/инфраструктуры в базовом сценарии равны нулю.</p>
+<p>Ставка геймдизайнера €30 000 gross/год — условный прокси, не рыночная оценка этой роли. В базовом сценарии на коллекцию из 10 карт: $1,25 API + $0,53875 ввода брифа = $1,78875. На карточку — $0,178875 без промежуточного округления.</p>
+<p>Расчёт: новые расходы = N ÷ доля приёмки × API за попытку + округлённое вверх число коллекций N/10 × минуты брифа ÷ 60 × ставка GD. Полная сумма = новые расходы + $2 832,307692. Разница = зарплатная стоимость художника − полная сумма AI. Неполная коллекция оплачивает целый бриф.</p>
+<p>Активное время после прототипа в базовом сценарии: GD = N/300 часов, художник = 8N часов. Например, 10 000 карт — 33,33 часа ввода брифов и 80 000 часов художника. Это линейная калькуляция трудозатрат, не обещание мощности или календарного срока.</p>
+<p>Прототип: примерно $140 прямых расходов ($80 ChatGPT + $60 API и Cloudflare вместе) и 40 часов автора по $140 000 gross/год ÷ 2 080. Итого $2 832,307692; эти 40 часов больше не повторяются.</p>
+<p>Художники: Junior €17 535, Middle €30 000, Senior €43 500 в год. Зарплатный пересчёт — 2 080 часов/год, 1 EUR = 1,1206 USD. Только gross-зарплата, без взносов работодателя. Одинаковое время на карту для трёх уровней — упрощение сценария, не норма скорости.</p>
+<p><a href="https://investgame.net/wp-content/uploads/2025/11/Big_Games_Industry_Employment_Survey_2025.pdf">InGameJob / Values Value 2025</a>: медианы Art/Design, EU+UK+CH, не исключительно 2D-художники. <a href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html">Курс ЕЦБ от 9 октября 2026</a> — по предоставленному исследованию.</p>
+</details>
+</section><!-- economics:end -->
 <section id="original-pipelines" class="archive-panel"><p class="eyebrow">ПЛАН НАЧАЛА РАБОТЫ</p><h2>Сначала план, затем проверка</h2><p>В начале тестового я планировала разделить создание коллекции на три пайплайна: содержание, арт и проверку. Предполагалось, что история свяжет предметы, модульная сборка позволит переиспользовать окружение, а проверки помогут контролировать весь набор. Дальше эксперименты изменили эти предположения.</p><h3>Содержание коллекции</h3><ol class="archive-scheme-flow"><li><strong>Тема → история</strong><p>Narrative Collection Designer формирует замысел.</p></li><li><strong>Предметы → композиция</strong><p>Визуальное разнообразие и согласованный набор.</p></li><li><strong>CollectionValidator</strong><p>Планировалось проверять структуру, связность и дубли.</p></li></ol><h3>Арт и сборка</h3><ol class="archive-scheme-flow"><li><strong>Предметы + C1–C4</strong><p>Композиционные требования и референсы.</p></li><li><strong>ArtDirectionCompiler</strong><p>Общие художественные условия и описание предмета.</p></li><li><strong>Компоненты → карточка</strong><p>Исходная гипотеза: C1–C3 модульно, C4 цельной сценой.</p></li></ol><h3>Проверка коллекции</h3><ol class="archive-scheme-flow"><li><strong>Карточка</strong><p>Содержание, стиль и композиция.</p></li><li><strong>Набор</strong><p>Согласованность и разнообразие.</p></li><li><strong>Замечания → доработка</strong><p>Автоматизация художественной приёмки — исследовательский вопрос.</p></li></ol><p class="archive-scheme-note">Это исходный план, восстановленный по предоставленной истории, а не описание готовой реализации. C1–C4 — рабочие композиционные типы, не официальная шкала редкости Playrix.</p></section>
 <section id="overview" class="archive-panel">
 <p class="eyebrow">КАК ЧИТАТЬ ЭТОТ КЕЙС</p><h2>Выводы на первом плане. Доказательства — рядом.</h2>
@@ -34,19 +59,19 @@
 <p><a href="/api/archive">Активный исторический реестр JSON</a> · <a href="/archive-seed/history-v1/missing-media.json">Инвентарь отсутствующих медиа</a></p>
 </details></section>
 <div id="editorial-phases" aria-label="Этапы проекта"></div>
-<section id="prototype-conclusion" class="archive-panel"><p class="eyebrow">РЕЗУЛЬТАТ ТЕСТОВОГО</p><h2>Проверяемый прототип, следующий шаг — измерения</h2><p>Бриф → узнаваемые тематические предметы → структурные и смысловые проверки → арт-дирекшн с референсами → whole_card 864 × 960 → сохранение raw и отдельная финализация → оценка → новая версия → явное Apply → экспорт.</p><p>Валидный план переходит к изображениям автоматически. Историческая модульная ветка сохранена отдельно. GPT используется через промпты и референсы, без обучения собственных весов.</p><p>Тестовое заканчивается на проверке ключевых решений и управляемом результате. Это ограничение объёма, а не доказательство готовности к производству 1000+ карточек. Дальше нужны новые темы и материалы, фиксированная рубрика приёмки, измеренные переделки, активное время продюсера и стоимость принятого набора.</p><p><a class="action" href="/archive/economics.html">Итог эксперимента и экономические сценарии →</a></p></section>
+<section id="prototype-conclusion" class="archive-panel"><p class="eyebrow">РЕЗУЛЬТАТ ТЕСТОВОГО</p><h2>Проверяемый прототип, следующий шаг — измерения</h2><p>Бриф → узнаваемые тематические предметы → структурные и смысловые проверки → арт-дирекшн с референсами → whole_card 864 × 960 → сохранение raw и отдельная финализация → оценка → новая версия → явное Apply → экспорт.</p><p>Валидный план переходит к изображениям автоматически. Историческая модульная ветка сохранена отдельно. GPT используется через промпты и референсы, без обучения собственных весов.</p><p>Тестовое заканчивается на проверке ключевых решений и управляемом результате. Это ограничение объёма, а не доказательство готовности к производству 1000+ карточек. Дальше нужны новые темы и материалы, фиксированная рубрика приёмки, измеренные переделки, активное время продюсера и стоимость принятого набора.</p></section>
 <section id="archive-schemes" class="archive-panel"><p class="eyebrow">КАК УСТРОЕН ПРОЦЕСС</p><h2>Пять взглядов на один проект</h2><div id="scheme-list"></div></section>
 <section id="decision-timeline" class="archive-panel"><p class="eyebrow">ЧТО МЕНЯЛО НАПРАВЛЕНИЕ</p><h2>Лента решений</h2><ol id="decision-list" class="archive-decisions"></ol></section>
-<section class="latest-test archive-panel"><p class="eyebrow">ОТДЕЛЬНОЕ СРАВНЕНИЕ · 09.10.2026 · ИТЕРАЦИЯ 1</p><h2>GPT, FLUX с LoRA и без LoRA</h2><p>Чашка и корзинка: четыре варианта, исходные изображения и ограничения сравнения. Это историческое сравнение, а не утверждение о превосходстве модели.</p><a class="action" href="/archive/latest-lora-test/">Открыть сравнение →</a></section>
+
 <section id="history-catalog" class="archive-panel">
 <p class="eyebrow">ПЕРВИЧНЫЕ ЗАПИСИ</p><h2>Полный архив экспериментов</h2>
-<details class="archive-disclosure"><summary>Описание исторического реестра</summary><div id="introduction"></div></details>
+<details id="history-details" class="archive-disclosure"><summary>Раскрыть все 57 исходных записей и изображения</summary><details class="archive-disclosure"><summary>Описание исторического реестра</summary><div id="introduction"></div></details>
 <nav id="chapters" aria-label="Главы истории"></nav><div id="chapter-notes"></div>
 <label class="search">Найти эксперимент<input id="search" type="search" placeholder="Название, гипотеза или результат"></label>
-<p id="status" role="status">Загрузка архива…</p><div id="timeline"></div></section>
+<p id="status" role="status">Загрузка архива…</p><div id="timeline"></div></details></section>
 <section id="generated-attempts" class="archive-panel"><p class="eyebrow">СОХРАНЁННАЯ РАБОТА</p><h2>Новые попытки генерации</h2><p>Попытки доступны в сессии, в которой запускалась генерация. Их отсутствие здесь не означает отсутствие результатов в проекте.</p><p id="generated-status" role="status">Загрузка попыток…</p><div id="generated-runs"></div><p><a href="/game-results.html">Результаты мини-игры →</a></p></section>
 <noscript><p class="archive-panel">Для интерактивного архива нужен JavaScript. <a href="/api/archive">Открыть полный реестр JSON</a> или <a href="/archive/latest-lora-test/">сравнение GPT и FLUX</a>.</p></noscript>
 </main></div>
 <footer class="archive-footer">Исследование AI-карточек · референсы Playrix · сохранённая история, проверяемые источники.</footer>
-<script src="/archive.js"></script>
+<script src="/archive.js"></script><script type="module" src="/archive-economics.mjs"></script>
 </body></html>
