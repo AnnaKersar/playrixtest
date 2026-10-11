@@ -50,7 +50,7 @@ function updateGenerationUI(){
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
   $('launch').disabled=busy||!generationAccess;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
-  if(progress.message)text('launch-status',progress.message==='Not authorized for this resource'?'Текущая сессия не имеет доступа к сохранённой попытке. Войдите как владелец или снимите прежнее ожидание перед новой коллекцией.':progress.message);
+  if(progress.message)text('launch-status',progress.message==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Нажмите «ЗАПУСТИТЬ», чтобы создать новую коллекцию в текущей сессии. Прежняя попытка сохранится в истории.':progress.message);
  const ownerLink=document.querySelector('.owner-link');if(ownerLink){const needsLogin=!!saved.pending?.authRequired||progress.message==='Not authorized for this resource';ownerLink.textContent=needsLogin?'Войти и продолжить сохранённую попытку':'Вход владельца';ownerLink.classList.toggle('action',needsLogin);}
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}

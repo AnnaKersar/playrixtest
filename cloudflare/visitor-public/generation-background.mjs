@@ -12,7 +12,7 @@ const pollGateKey='card-studio-generation-poll/v1',POLL_MS=10000;
 async function api(path,body){
   const response=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
   const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{throw Object.assign(Error('Сайт вернул не JSON · HTTP '+response.status),{status:response.status||503});}
-  if(!response.ok)throw Object.assign(Error(response.status===401||response.status===403?'Текущая сессия не имеет доступа к сохранённой попытке. Войдите как владелец, чтобы продолжить её. Для отдельной новой коллекции сначала нажмите «Снять зависшее ожидание».':data.error||'HTTP '+response.status),{status:response.status,authRequired:response.status===401||response.status===403});
+  if(!response.ok)throw Object.assign(Error(response.status===401||data.error==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Гость может запустить свою новую коллекцию кнопкой «ЗАПУСТИТЬ». Для просмотра прежней попытки владельца нужен вход владельца.':data.error||'HTTP '+response.status),{status:response.status,authRequired:response.status===401||data.error==='Not authorized for this resource'});
   return data;
 }
 export function generationProgress(){return readProgress();}
@@ -34,9 +34,12 @@ function commitPending(patch,plannerKey){
 }
 export async function startGeneration(name,wishes,advanced={}){
   const draft=collectionBrief(name,wishes,advanced);plannerPayload(draft);
+  const identity=await api('/api/preflight');const existingPending=readGeneration().pending;const expected=existingPending?await stableId('planner_',identity.principalId,existingPending.plannerKey):null;
+  const changedSession=!!existingPending&&((existingPending.principalId&&existingPending.principalId!==identity.principalId)||(existingPending.expectedPlanId&&existingPending.expectedPlanId!==expected));
   const start=()=>{
     const state=readGeneration();
-    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft,startedAt:Date.now()};
+    if(changedSession&&state.pending?.plannerKey===existingPending.plannerKey){state.detached_attempts=[...(state.detached_attempts||[]),{...state.pending,detachedAt:Date.now(),reason:'different-session'}];state.pending=null;state.runId=null;}
+    if(!state.pending)state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:draft.collection_name,wishes:draft.producer_comment,draft,principalId:identity.principalId,startedAt:Date.now()};
     state.pending.authRequired=false;state.pending.paused=false;state.name=name;state.wishes=wishes;state.advanced=advanced;save(state);
     publish({phase:'running',message:'Продолжаем генерацию…',runId:state.pending.runId||null});
   };
