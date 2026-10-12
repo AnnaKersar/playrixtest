@@ -1,11 +1,11 @@
 {
   "schema": "playrix-economics/v1",
   "direct_spend": {
-    "usd": 180,
+    "usd": 250,
     "chatgpt_usd": 80,
-    "type": "user_reported_approximate",
+    "type": "user_reported_fixed",
     "no_additional_ledger_sum": true,
-    "api_tokens_usd": 100,
+    "api_tokens_usd": 170,
     "clarified_on": "2026-10-12",
     "previous_report": {
       "usd": 140,
@@ -13,7 +13,7 @@
       "api_and_cloudflare_combined_usd": 60
     },
     "cloudflare_historical_separate_usd": null,
-    "clarification": "User clarified tokens/API as $100, with ChatGPT $80 separate. Previous $60 bundled API and Cloudflare; no independently known Cloudflare breakdown is added again."
+    "clarification": "Final author instruction: $250 total, split as $80 ChatGPT and $170 API. Fixed model inputs reported by author, not independently reconciled provider invoices. Historical Cloudflare separate amount is unknown and is not added again."
   },
   "labor": {
     "annual_gross_usd": 140000,
@@ -21,7 +21,9 @@
     "active_project_hours": 40,
     "type": "user_estimate",
     "scope": "Wednesday–Sunday, 8 active hours/day; includes full Sunday, not measured elapsed-to-date labor.",
-    "employer_overhead": false
+    "employer_overhead": false,
+    "role": "Executive Producer",
+    "rate_basis": "Author-specified Executive Producer rate of $140000 gross/year divided by 2080 hours; not verified current salary or market research."
   },
   "game_observation": {
     "at_utc": "2026-10-11T04:03:00Z",
