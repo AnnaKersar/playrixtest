@@ -61,3 +61,5 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 #card-grid .card-selection-target[aria-pressed=true]{background:linear-gradient(#dff9b8,#b7e987);border-color:#66b947;outline:3px solid #67c34c;box-shadow:0 3px #428e36}
 .card-selection button[aria-pressed=true]{background:linear-gradient(#dff9b8,#b7e987);color:#315e30;border-color:#66b947}
 .card-selection a{display:block;margin:8px 0}
+
+#resume-collection[hidden]{display:none!important}

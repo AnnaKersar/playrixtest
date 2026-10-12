@@ -2,7 +2,7 @@ export function isAirborneSubject(brief,category){
  if(category!=='C4')return false;
  const object=String(brief).includes('\nOBJECT\n')?String(brief).split('\nOBJECT\n')[1].split('\nOUTPUT CONTRACT')[0]:String(brief);
  const identity=object.split(/Story beat:|Collection:|Story role:/)[0];
- return /\b(airborne|hovering|flying|in[- ]flight|spaceflight|free[- ]fall|leaping|jumping|suspended in (?:air|space)|floating in (?:air|space))\b|летящ|парящ|в пол[её]те|прыжок/iu.test(identity)&&!/(?:not|never) (?:flying|airborne|hovering)/i.test(identity);
+ return (/\b(airborne|hovering|hovers|flying|flies|mid[- ]air|in[- ]flight|spaceflight|free[- ]fall|leaping|jumping|suspended in (?:air|space)|floating in (?:air|space))\b|летящ|парящ|в пол[её]те|прыжок/iu.test(identity)||/\b(drone|quadcopter|spacecraft)\b/i.test(identity)&&!/\b(parked|landed|grounded|resting|sitting|on a (?:stand|table|pedestal))\b/i.test(identity))&&!/(?:not|never) (?:flying|airborne|hovering)/i.test(identity);
 }
 export const airbornePlacementRule='AIRBORNE SUBJECT OVERRIDE: Place the complete flying/hovering focal subject in the LOWER-MIDDLE of the artwork, not near the upper sky. Horizontal center x=50%; lowest attached visible subject point y=86–88%, excluding shadows or scenery. The visual mass of a wide flying subject normally lies around y=65–76%, determined by its real silhouette and approved smaller size; do NOT force its body to y=50% or y=52%. Keep the same 55–65% target and 70% maximum size; never enlarge or invent legs, floor or pedestal to meet placement. The empty sky ABOVE is intentional; no large empty gap BELOW. Preserve believable flight and natural proportions.';
 export const SUBJECT_LAYOUT_VERSION='subject-layout/v8-airborne-lower-placement';
