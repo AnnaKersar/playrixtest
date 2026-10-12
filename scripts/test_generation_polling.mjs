@@ -13,6 +13,19 @@ now+=10000;await vm.runInContext('tick()',b.context);assert.equal(requests,2);as
 now+=10000;a.events.storage({key:'card-studio-generation-progress/v1'});await Promise.resolve();assert.equal(requests,2);
 assert.equal(writes.get(key)||0,0);
 console.log('PASS shared 10-second gate across tabs, no progress-triggered polling, unchanged progress/state not saved repeatedly, GET only; paid sends 0');
+{
+ const savedBefore=JSON.stringify({runId:'run_known',pending:{plannerKey:'p',runId:'run_known',paused:true}});
+ store.set(key,savedBefore);store.set('card-studio-generation-progress/v1',JSON.stringify({message:'Проверка временно недоступна: Сайт вернул не JSON · HTTP 503.'}));
+ a.context.imageProgress=(jobs,total)=>jobs.filter(j=>j.status==='complete').length+'/'+total+' готовы';
+ const beforeRequests=requests;
+ vm.runInContext("recordRunRead({run:{id:'run_other'},jobs:[{status:'complete'}]})",a.context);
+ assert.match(JSON.parse(store.get('card-studio-generation-progress/v1')).message,/503/);
+ vm.runInContext("recordRunRead({run:{id:'run_known'},jobs:[{status:'complete'},{status:'queued'}]})",a.context);
+ assert.match(JSON.parse(store.get('card-studio-generation-progress/v1')).message,/1\/2 готовы/);
+ assert.match(JSON.parse(store.get('card-studio-generation-progress/v1')).message,/приостановлена/);
+ assert.equal(store.get(key),savedBefore,'Reading status must preserve paused attempts');assert.equal(requests,beforeRequests,'Reading status never resends work');
+ console.log('PASS successful matching run read clears stale 503 message without changing a paused attempt or sending requests');
+}
 store.set(key,JSON.stringify({pending:{plannerKey:'q',runKey:'rq',planId:'planner_q',expectedPlanId:'planner_q',expectedRunId:'run_q',name:'Music',wishes:'',startedAt:0,paused:true}}));
 const c=tab();await new Promise(resolve=>setImmediate(resolve));let planGets=0,runPosts=0;
 c.context.plannedCollection=()=>({approved:true});c.context.imagePayload=()=>({objects:[]});c.context.imageProgress=()=> 'Images queued';
