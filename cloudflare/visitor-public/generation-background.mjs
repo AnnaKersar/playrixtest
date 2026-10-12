@@ -24,7 +24,7 @@ export async function restoreGenerationAccess(identity){
  if(!p?.paused||!denied||!(p.planId||p.runId))return false;
  if(identity.role!=='owner'&&p.principalId!==identity.principalId)return false;
  // Verify the saved resource with GET; never submit a planner or image request here.
- const result=await api(p.runId?'/api/run?compact=1&run='+encodeURIComponent(p.runId):'/api/planner?id='+encodeURIComponent(p.planId));
+ const result=await api(p.runId?'/api/run?status=1&run='+encodeURIComponent(p.runId):'/api/planner?id='+encodeURIComponent(p.planId));
  const patch={authRequired:false,paused:false};
  if(!p.runId){patch.planApproved=false;if(result.result?.plan){patch.planResult=result.result.plan;patch.planValidationError=result.result.validation_error||null;}}
  commitPending(patch,p.plannerKey);localStorage.removeItem(pollGateKey);
@@ -141,7 +141,7 @@ async function step(){
       if(plannerStopped.has(plan.status)||plannerStopped.has(plan.stage))throw Object.assign(Error('План остановлен: '+(plan.result?.provider_error?.message||plan.error||plan.stage||plan.status)),{terminal:true,providerRejected:!!plan.result?.provider_error});
       return;
     }
-    const result=await api('/api/run?compact=1&run='+encodeURIComponent(p.runId));
+    const result=await api('/api/run?status=1&run='+encodeURIComponent(p.runId));
     const jobs=result.jobs||[];
     if(jobs.length&&jobs.every(job=>job.status==='complete')){
       const fresh=readGeneration();if(fresh.pending?.plannerKey!==p.plannerKey)return;
