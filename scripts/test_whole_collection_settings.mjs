@@ -23,7 +23,7 @@ for(const category of ['C1','C2','C3','C4']){
  const contract=generationContract(category,'whole_card','test|'+category),prompt=generationInstructions(contract);
  assert.equal(contract.background,'opaque');assert.match(prompt,new RegExp(category+':'));
  assert.match(prompt,/42-100%/);
- if(category==='C4'){assert.match(prompt,/NO STANDARD BACKGROUND/);assert.match(prompt,/DETAILED SCENE-FILLING SURFACE/);assert(!prompt.includes('13/255'));}else assert.match(prompt,/13\/255/);
+ if(category==='C4'){assert.match(prompt,/NO STANDARD BACKGROUND/);assert.match(prompt,/SIMPLE CASUAL-GAME setting/);assert(!prompt.includes('13/255'));}else assert.match(prompt,/13\/255/);
  assert(!prompt.includes('editor adds')&&!prompt.includes('alpha zero'));
 }
 const seen=new Set();for(let i=0;i<30;i++)seen.add(generationContract('C2','whole_card','test|'+i).surface_finish);assert.equal(seen.size,2);

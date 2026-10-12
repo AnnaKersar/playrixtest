@@ -1,3 +1,4 @@
+import {queueCardChanges} from '/card-batch-background.mjs';
 import '/card-edit-background.mjs';
 import {collectionBrief,plannedCollection,plannerPayload,imagePayload} from '/generator-model.mjs?v=quality-v1';
 import {plannerStopped,plannerProgress,imageProgress} from '/generation-progress.mjs';
@@ -60,7 +61,7 @@ export async function startGeneration(name,wishes,advanced={}){
 }
 
 export async function approveGenerationPlan(){
- const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');if(p.planValidationError)throw Error(p.planValidationError+' Сначала уточните текстовый план.');plannedCollection(p.draft,p.planResult);p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
+ const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');if(p.planValidationError)throw Error(p.planValidationError+' Сначала уточните текстовый план.');plannedCollection(p.draft,p.planResult);if(p.replacement){const objects=p.planResult.collections.flatMap(c=>c.objects);for(const id of p.replacement.objectIds){if(!p.replacement.sourceJobs[id]||!objects.some(o=>o.object_id===id))throw Error('У выбранного предмета нет готовой исходной карточки.');}queueCardChanges(p.replacement.objectIds.map(id=>({kind:'replace',sourceJobId:p.replacement.sourceJobs[id],planId:p.planId,name:objects.find(o=>o.object_id===id)?.display_name})));s.pending=null;save(s);publish({phase:'idle',runId:s.runId,message:'Замены отправлены. Новые версии появятся в редакторе; примените их после проверки.'});return;}p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
  if(navigator.locks)await navigator.locks.request('playrix-generation-step',approve);else approve();tick();
 }
 export async function reviseGenerationPlan(instruction,rejectedObjectIds=[]){
@@ -69,9 +70,23 @@ export async function reviseGenerationPlan(instruction,rejectedObjectIds=[]){
  const draft=structuredClone(p.draft);draft.collection_settings.categories.forEach(c=>{c.name='';});
  const presets=JSON.parse(draft.preset_collections);presets.categories.forEach(c=>{c.name='Use the revised category name from the prior plan, unless the user requests a change';});draft.preset_collections=JSON.stringify(presets);
  s.plan_history=[...(s.plan_history||[]),{planId:p.planId,plan:p.planResult,instruction,at:Date.now()}].slice(-10);
- s.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:p.name,wishes:p.wishes,draft,principalId:p.principalId,startedAt:Date.now(),revision:{plan_id:p.planId,instruction,rejected_object_ids:rejectedObjectIds},planApproved:false};
+ s.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:p.name,wishes:p.wishes,draft,principalId:p.principalId,startedAt:Date.now(),revision:{plan_id:p.planId,instruction,rejected_object_ids:rejectedObjectIds},...(p.replacement?{replacement:{...p.replacement,objectIds:[...new Set([...p.replacement.objectIds,...rejectedObjectIds])]}}:{}),planApproved:false};
  save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'Уточняем текстовый план. Изображения ещё не создаются.'});};
  if(navigator.locks)await navigator.locks.request('playrix-generation-step',revise);else revise();tick();
+}
+
+
+export async function startCardReplacement(runId,selected){
+ if(readGeneration().pending&&!readGeneration().pending.paused)throw Error('Сначала завершите или остановите текущую генерацию. Ваш выбор сохранён.');
+ const context=await api('/api/card-replacement-context?run='+encodeURIComponent(runId));
+ const sourceJobs=Object.fromEntries(context.jobs.map(j=>[j.object_id,j.id])),ids=selected.map(t=>context.jobs.find(j=>j.id===t.sourceJobId)?.object_id);
+ if(ids.some(id=>!id)||!ids.length)throw Error('Выберите готовые карточки исходной коллекции.');
+ const comments=selected.map((t,i)=>t.note?.trim()?'Предмет '+ids[i]+': '+t.note.trim():'').filter(Boolean).join('\n');
+ const instruction='Замените только отмеченные предметы. Все object_id, типы C1–C4 и неотмеченные предметы должны остаться неизменными.\n'+comments;
+ if(instruction.length>4000)throw Error('Общий комментарий длиннее 4000 символов.');
+ const advanced={category_count:context.plan.collections.length,categories:context.plan.collections.map(c=>({name:c.name,card_count:c.objects.length}))},draft=collectionBrief(context.name,context.producer_comment,advanced),identity=await api('/api/preflight');
+ const start=()=>{const state=readGeneration();if(state.pending&&!state.pending.paused)throw Error('Дождитесь текущей генерации.');state.pending={plannerKey:crypto.randomUUID(),runKey:crypto.randomUUID(),name:context.name,wishes:context.producer_comment,draft,principalId:identity.principalId,startedAt:Date.now(),revision:{plan_id:context.plannerId,instruction,rejected_object_ids:ids},replacement:{runId,sourceJobs,objectIds:ids},planApproved:false};save(state);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'Планировщик подбирает замену выбранным предметам. Остальные карточки сохраняются.'});};
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',start);else start();tick();
 }
 
 async function existing(path){try{return await api(path);}catch(error){if(error.status===404)return null;throw error;}}
