@@ -1,5 +1,5 @@
 // Public projection: never serialize a run, attempt, planner input or receipt.
-import {budgetState,guestPaidEnabled,GUEST_CAP} from './budget.mjs';
+import {budgetState,guestPaidEnabled,reservationFor} from './budget.mjs';
 import {sha} from './provider.mjs';
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const statuses=new Set(['queued','running','complete','failed','needs_review','blocked','cancelled','claimed','received','unknown','closed_reserved_unknown','cost_bound_exceeded']);
@@ -10,8 +10,8 @@ export async function publicGuestBudget(request,env){
  if(!env.DB)return json({error:'Budget unavailable'},503);
  const b=await budgetState(env),n=Number(new URL(request.url).searchParams.get('cards')||10);
  if(!Number.isInteger(n)||n<1||n>30)return json({error:'Card count must be 1–30'},400);
- const blockers=[...b.live_blockers];if(!guestPaidEnabled(env)||env.LIVE_GENERATION_ENABLED!=='true'||env.LIVE_PLANNER_ENABLED!=='true')blockers.push('paid_guest_gate_closed');if(b.guest_remaining<=0)blockers.push('shared_guest_budget_exhausted');if(b.remaining<GUEST_CAP)blockers.push('project_budget_unavailable');
- return json({scope:'all-visitors-lifetime',ceiling_nanodollars:b.guest_ceiling,remaining_nanodollars:b.guest_remaining,committed_nanodollars:b.guest_committed,generation_enabled:blockers.length===0,card_count:n,quote_nanodollars:null,quote_basis:'unavailable',blockers,accounting:'Soft lifetime budget based on usage accounting. One paid request at a time; unknown outcomes retain a full-pool hold. The last request may exceed the remaining balance.'});
+ const blockers=[...b.live_blockers,...b.guest_live_blockers];if(!guestPaidEnabled(env)||env.LIVE_GENERATION_ENABLED!=='true'||env.LIVE_PLANNER_ENABLED!=='true')blockers.push('paid_guest_gate_closed');if(b.guest_remaining<=0)blockers.push('shared_guest_budget_exhausted');if(guestPaidEnabled(env)&&b.remaining<reservationFor(env,'image','guest:public'))blockers.push('project_budget_unavailable');
+ return json({scope:'all-visitors-current-budget-period',ceiling_nanodollars:b.guest_ceiling,remaining_nanodollars:b.guest_remaining,committed_nanodollars:b.guest_committed,generation_enabled:blockers.length===0,card_count:n,quote_nanodollars:null,quote_basis:'unavailable',blockers,accounting:'Shared $10 allowance with atomic reservations. Unknown outcomes retain the original hold until confirmed or manually resolved. Historical charges are retained.'});
 }
 export async function generationHistory(request,env){
  if(request.method!=='GET')return json({error:'Method not allowed'},405);

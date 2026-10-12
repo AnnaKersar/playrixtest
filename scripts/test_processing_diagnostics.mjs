@@ -3,32 +3,33 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFile} from 'node:fs/promises';
 import {createWorker} from '../cloudflare/worker.mjs';
 import {sha,IMAGE_MODEL} from '../cloudflare/provider.mjs';
-import {mockPNG,decodePNG,finalPNG} from '../cloudflare/png.mjs';
+import {mockPNG,decodePNG,finalPNG,encodePNG} from '../cloudflare/png.mjs';
 import {createProcessing,processingHealth,PROCESSING_DEADLINE_MS} from '../cloudflare/processing-diagnostics.mjs';
 import {journalRead,processingExecutions} from '../cloudflare/experiment-journal.mjs';
 
 globalThis.fetch=()=>{throw Error('External network forbidden in offline tests');};
 const schema=await readFile(new URL('../cloudflare/schema.sql',import.meta.url),'utf8');
-const raw=await mockPNG(1376,1536),sheet=await mockPNG(896,1040),finalFixture=await mockPNG(860,960);
+async function opaqueFixture(w,h){const p=await decodePNG(await mockPNG(w,h));for(let i=3;i<p.rgba.length;i+=4)p.rgba[i]=255;return encodePNG(w,h,p.rgba);}
+const raw=await opaqueFixture(1376,1536),sheet=await mockPNG(896,1040),finalFixture=await opaqueFixture(860,960);
 const cost=141000,usage={input_tokens:3,input_tokens_details:{text_tokens:1,image_tokens:2},output_tokens:4,total_tokens:7};
 const confidential='TOKEN_PROMPT_HEADER_IP_BASE64_DO_NOT_LOG';
 const fastPNG={resize:()=>({width:860,height:960,rgba:new Uint8Array(0)}),encode:()=>finalFixture};
 const warnings=[],originalError=console.error;console.error=value=>warnings.push(JSON.parse(value));
 let passed=0;
-async function fixture({pngOperations=fastPNG,providerError=null,generation=null}={}){
+async function fixture({pngOperations=fastPNG,providerError=null,generation={mode:'whole_card',background:'opaque',category:'C1'}}={}){
   const db=new DatabaseSync(':memory:');db.exec(schema);db.exec('UPDATE budget SET approved=1,ceiling=100000000000');
   const state={dbFail:null,r2Fail:null,sendFail:false,calls:0,acks:0,sent:[],map:new Map()};
   function statement(sql,args=[]){return {bind(...a){return statement(sql,a);},async first(){if(state.dbFail?.(sql))throw Error(confidential);return db.prepare(sql).get(...args)||null;},async all(){if(state.dbFail?.(sql))throw Error(confidential);return {results:db.prepare(sql).all(...args)};},async run(){if(state.dbFail?.(sql))throw Error(confidential);return {meta:{changes:Number(db.prepare(sql).run(...args).changes)}};}};}
   const DB={prepare:statement,async batch(items){db.exec('BEGIN');try{const values=[];for(const s of items)values.push(await s.run());db.exec('COMMIT');return values;}catch(e){db.exec('ROLLBACK');throw e;}}};
-  const ARTIFACTS={async put(key,value){if(state.r2Fail?.(key,'put'))throw Error(confidential);state.map.set(key,typeof value==='string'?new TextEncoder().encode(value):new Uint8Array(value));},async get(key){if(state.r2Fail?.(key,'get'))throw Error(confidential);const bytes=state.map.get(key);return bytes?{text:async()=>new TextDecoder().decode(bytes),json:async()=>JSON.parse(new TextDecoder().decode(bytes)),arrayBuffer:async()=>bytes.slice().buffer,body:new Blob([bytes]).stream()}:null;},async head(key){return state.map.has(key)?{}:null;}};
+  const ARTIFACTS={async put(key,value){if(state.r2Fail?.(key,'put'))throw Error(confidential);state.map.set(key,typeof value==='string'?new TextEncoder().encode(value):new Uint8Array(value));},async get(key){if(state.r2Fail?.(key,'get'))throw Error(confidential);const bytes=state.map.get(key);return bytes?{etag:key,text:async()=>new TextDecoder().decode(bytes),json:async()=>JSON.parse(new TextDecoder().decode(bytes)),arrayBuffer:async()=>bytes.slice().buffer,body:new Blob([bytes]).stream()}:null;},async head(key){return state.map.has(key)?{etag:key}:null;}};
   const ad='Synthetic offline Art Direction',manifest={version:'reference-pack/v1',model:IMAGE_MODEL,reference_count:50,art_direction:ad,art_direction_sha256:await sha(ad),sheets:Array.from({length:13},(_,i)=>({key:'references/'+i+'.png',count:i===12?2:4,sha256:null}))};
-  for(const entry of manifest.sheets){entry.sha256=await sha(sheet);await ARTIFACTS.put(entry.key,sheet);}
+  for(const entry of manifest.sheets){entry.sha256=await sha(sheet);await ARTIFACTS.put(entry.key,sheet);await ARTIFACTS.put('reference-validation/'+encodeURIComponent(entry.key)+'-'+entry.sha256+'.json',JSON.stringify({key:entry.key,etag:entry.key,sha256:entry.sha256}));}
   const manifestText=JSON.stringify(manifest);await ARTIFACTS.put('references/manifest.json',manifestText);
   const env={DB,ARTIFACTS,IMAGE_JOBS:{async send(body){if(state.sendFail)throw Error(confidential);state.sent.push(body);}},ASSETS:{},OPENAI_API_KEY:confidential,LIVE_GENERATION_ENABLED:'true',REFERENCE_MANIFEST_KEY:'references/manifest.json',APPROVED_REFERENCE_MANIFEST_SHA256:await sha(manifestText),APPROVED_ART_DIRECTION_SHA256:await sha(ad),CF_VERSION_METADATA:{id:'test-deployment'}};
-  const frozen={model:IMAGE_MODEL,provider_version:'fixture',reference_manifest_sha:env.APPROVED_REFERENCE_MANIFEST_SHA256,art_direction_sha:env.APPROVED_ART_DIRECTION_SHA256,native:[1376,1536],quality:'medium',background:'transparent',reservation:1000000000,objects:[{object_id:'card',prompt:confidential,...(generation?{generation}:{})}]},text=JSON.stringify(frozen);
+  const frozen={model:IMAGE_MODEL,provider_version:'fixture',reference_manifest_sha:env.APPROVED_REFERENCE_MANIFEST_SHA256,art_direction_sha:env.APPROVED_ART_DIRECTION_SHA256,native:[1376,1536],quality:'medium',background:'transparent',reservation:1000000000,objects:[{object_id:'card',prompt:confidential,living_creatures:'none',semantic_family:'tool',factual_checks:['The loop attaches to the whistle body','The mouthpiece has a coherent opening'],...(generation?{generation}:{})}]},text=JSON.stringify(frozen);
   await ARTIFACTS.put('frozen.json',text);db.prepare('INSERT INTO runs VALUES (?,?,?,?,?,?,?)').run('run_fixture','live','Fixture','frozen.json',await sha(text),new Date().toISOString(),'owner');db.prepare('INSERT INTO jobs VALUES (?,?,?,?)').run('job_fixture','run_fixture','card','queued');
   const worker=createWorker({authenticate:async()=>({principalId:'owner',role:'owner'}),pngOperations,provider:async()=>{state.calls++;if(providerError)throw providerError;return {png:raw,usage,requestId:'fixture-request'};}});
-  const deliver=body=>worker.queue({messages:[{body,ack(){state.acks++;}}]},env);
+  const deliver=body=>worker.queue({messages:[{body,ack(){state.acks++;},retry(){state.retries=(state.retries||0)+1;}}]},env);
   const generate=()=>deliver({version:1,jobId:'job_fixture'});
   const recover=()=>deliver({version:1,kind:'image-recovery',jobId:'job_fixture',parentExecutionId:state.sent[0]?.parentExecutionId});
   const job=()=>db.prepare('SELECT * FROM jobs').get(),attempt=()=>db.prepare('SELECT * FROM attempts').get();
@@ -43,25 +44,25 @@ await check('full real PNG lifecycle; stages, dimensions, correlation and native
   const f=await fixture({pngOperations:undefined}); // Explicitly remove fast operations for this case.
   const realWorker=createWorker({provider:async()=>{f.state.calls++;return {png:raw,usage,requestId:'fixture'};}});
   const send=body=>realWorker.queue({messages:[{body,ack(){f.state.acks++;}}]},f.env);
-  await send({version:1,jobId:'job_fixture'});assert.equal(f.state.calls,1);assert.equal(f.attempt().actual,cost);assert.equal(f.job().status,'running');
+  await send({version:1,jobId:'job_fixture'});assert.equal(f.state.calls,1,JSON.stringify({job:f.job(),events:f.events(),warnings}));assert.equal(f.attempt().actual,cost);assert.equal(f.job().status,'running');
   await send(f.state.sent[0]);assert.equal(f.job().status,'complete');
   const events=f.events();for(const stage of ['provider_response','raw_r2_write','receipt_r2_write','receipt_d1_status','finalization_send','read_raw_receipt','decoding_png','resizing_png','encoding_png','final_r2_write','final_d1_status']){assert(has(events,stage,'started'),stage);assert(has(events,stage,'succeeded'),stage);}
   const receive=events.find(e=>e.stage==='finalization_receive');assert.equal(receive.parent_execution_id,f.state.sent[0].parentExecutionId);assert.notEqual(receive.execution_id,receive.parent_execution_id);
   assert(events.every(e=>e.run_id==='run_fixture'&&e.job_id==='job_fixture'&&e.attempt_id==='job_fixture'&&e.at&&e.deadline_at&&e.deploy_version==='test-deployment'));
   assert.equal(events.find(e=>e.stage==='decoding_png'&&e.outcome==='succeeded').width,1376);
-  const png=await decodePNG(f.state.map.get('runs/run_fixture/card/final.png'));assert.equal(png.width,860);assert.equal(png.height,960);assert.equal(png.rgba[3],0);
+  const png=await decodePNG(f.state.map.get('runs/run_fixture/card/final.png'));assert.equal(png.width,860);assert.equal(png.height,960);assert.equal(png.rgba[3],255);
   assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));assert.equal(JSON.stringify(events).includes(confidential),false);f.close();
 });
 for(const [stage,operation] of [['decoding_png','decode'],['resizing_png','resize'],['encoding_png','encode']])await check(stage+' failure retains raw, settled billing and blocks paid replay',async()=>{
   const f=await fixture({pngOperations:{...fastPNG,[operation]:()=>{throw Error(confidential);}}});await f.generate();await f.recover();
-  assert.equal(f.job().status,'needs_review');assert.equal(f.attempt().actual,cost);assert.equal(f.attempt().status,'complete');assert(has(f.events(),stage,'failed'));
+  assert.equal(f.job().status,'running');assert.equal(f.state.retries,1);assert.equal(f.attempt().actual,cost);assert.equal(f.attempt().status,'complete');assert(has(f.events(),stage,'failed'));
   await f.generate();assert.equal(f.state.calls,1);assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));assert(f.state.map.has(f.receiptKey));assert(!JSON.stringify(f.events()).includes(confidential));f.close();
 });
 for(const suffix of ['/final.png','/manifest.json'])await check('final R2 failure '+suffix+' can recover without payment',async()=>{
-  const f=await fixture();await f.generate();f.state.r2Fail=key=>key.endsWith(suffix);await f.recover();assert.equal(f.job().status,'needs_review');assert(has(f.events(),'final_r2_write','failed'));assert.equal(f.attempt().actual,cost);f.state.r2Fail=null;await f.recover();assert.equal(f.job().status,'complete');assert.equal(f.state.calls,1);assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));f.close();
+  const f=await fixture();await f.generate();f.state.r2Fail=key=>key.endsWith(suffix);await f.recover();assert.equal(f.job().status,'running');assert(has(f.events(),'final_r2_write','failed'));assert.equal(f.attempt().actual,cost);f.state.r2Fail=null;await f.recover();assert.equal(f.job().status,'complete');assert.equal(f.state.calls,1);assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));f.close();
 });
 await check('final D1 batch error marks needs_review without erasing receipt/billing',async()=>{
-  const f=await fixture();await f.generate();f.state.dbFail=sql=>sql.startsWith('INSERT OR REPLACE INTO results');await f.recover();assert.equal(f.job().status,'needs_review');assert(has(f.events(),'final_d1_status','failed'));assert.equal(f.attempt().actual,cost);assert.equal(f.attempt().receipt_key,f.receiptKey);f.state.dbFail=null;await f.recover();assert.equal(f.job().status,'complete');assert.equal(f.state.calls,1);f.close();
+  const f=await fixture();await f.generate();f.state.dbFail=sql=>sql.startsWith('INSERT OR REPLACE INTO results');await f.recover();assert.equal(f.job().status,'running');assert.equal(f.state.retries,1);assert(has(f.events(),'final_d1_status','failed'));assert.equal(f.attempt().actual,cost);assert.equal(f.attempt().receipt_key,f.receiptKey);f.state.dbFail=null;await f.recover();assert.equal(f.job().status,'complete');assert.equal(f.state.calls,1);f.close();
 });
 for(const suffix of ['/raw.png','/receipt.json'])await check('provider storage failure '+suffix+' preserves claim and prevents retry',async()=>{
   const f=await fixture();f.state.r2Fail=key=>key.endsWith(suffix);await f.generate();assert.equal(f.job().status,'needs_review');assert.equal(f.attempt().status,'unknown');assert.equal(f.attempt().reservation,1000000000);assert.equal(f.attempt().actual,null);await f.generate();assert.equal(f.state.calls,1);if(suffix==='/receipt.json')assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));f.close();
@@ -84,8 +85,8 @@ await check('duplicate concurrent generation and duplicate recovery have one pai
 await check('stale execution remains unconfirmed with no status/billing change or automatic retry',async()=>{
   const f=await fixture();await f.generate();let now=1000000;const p=createProcessing(f.env,{id:'job_fixture',run_id:'run_fixture'},{clock:()=>now});await p.event('decoding_png','started',{headers:confidential,prompt:confidential,error:Error(confidential)});const snapshot=await(await f.env.ARTIFACTS.get('queue-diagnostics/job_fixture.json')).json();const stale=processingHealth(snapshot,now+PROCESSING_DEADLINE_MS+1);assert.equal(stale.stale,true);assert.equal(stale.processing_outcome,'unconfirmed');assert.equal(stale.automatic_retry_allowed,false);assert.equal(f.job().status,'running');assert.equal(f.attempt().actual,cost);assert.equal(f.state.calls,1);assert(!JSON.stringify(snapshot).includes(confidential));await p.end('complete');assert.equal(processingHealth(await(await f.env.ARTIFACTS.get('queue-diagnostics/job_fixture.json')).json(),now+PROCESSING_DEADLINE_MS*2).stale,false);f.close();
 });
-await check('handled failure plus D1 status outage is explicit and acknowledged without resend',async()=>{
-  const f=await fixture({pngOperations:{...fastPNG,resize:()=>{throw Error(confidential);}}});await f.generate();f.state.dbFail=sql=>sql.startsWith('UPDATE jobs SET status=CASE');const before=f.state.acks;await f.recover();assert.equal(f.state.acks,before+1);assert.equal(f.state.calls,1);assert.equal(f.job().status,'running');assert(warnings.some(w=>w.event==='queue-failure-status-write-failed'));const snapshot=await(await f.env.ARTIFACTS.get('queue-diagnostics/job_fixture.json')).json();assert.equal(snapshot.stage,'status_write_failed');assert.equal(f.attempt().actual,cost);f.close();
+await check('finalization failure plus D1 outage retries saved output without acknowledging or paying again',async()=>{
+  const f=await fixture({pngOperations:{...fastPNG,resize:()=>{throw Error(confidential);}}});await f.generate();f.state.dbFail=sql=>sql.startsWith('UPDATE finalization_jobs');const before=f.state.acks;await f.recover();assert.equal(f.state.acks,before);assert.equal(f.state.retries,1);assert.equal(f.state.calls,1);assert.equal(f.job().status,'running');const snapshot=await(await f.env.ARTIFACTS.get('queue-diagnostics/job_fixture.json')).json();assert.equal(snapshot.stage,'resizing_png');assert.equal(snapshot.outcome,'failed');assert.equal(f.attempt().actual,cost);assert(!JSON.stringify(snapshot).includes(confidential));f.close();
 });
 await check('codec awaits persisted phase start before executing and emits failure end',async()=>{
   const trace=[];await assert.rejects(()=>finalPNG(raw,async(stage,detail)=>{await Promise.resolve();trace.push(stage+':'+detail.outcome);},{},{decode:()=>{assert.deepEqual(trace,['decoding_png:started']);throw Error('PNG CRC');}}));assert.deepEqual(trace,['decoding_png:started','decoding_png:failed']);
@@ -110,15 +111,12 @@ await check('owner Recover enqueue failure is visible and clears running without
   const response=await f.worker.fetch(new Request('https://fixture.invalid/api/recover',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://fixture.invalid'},body:JSON.stringify({jobId:'job_fixture'})}),f.env);
   assert.equal(response.status,503);assert.equal(f.job().status,'needs_review');assert.equal(f.attempt().actual,cost);assert.equal(f.state.calls,1);assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));assert(has(f.events(),'finalization_send','failed'));f.close();
 });
-await check('modular foreground write failure keeps composition provenance and raw through recovery',async()=>{
-  const f=await fixture({generation:{mode:'modular',category:'C1',background:'transparent'}});await f.generate();f.state.r2Fail=key=>key.endsWith('/foreground.png');await f.recover();
-  assert.equal(f.job().status,'needs_review');assert(has(f.events(),'foreground_r2_write','failed'));assert(has(f.events(),'composing_card','succeeded'));assert.equal(f.attempt().actual,cost);
-  f.state.r2Fail=null;await f.recover();assert.equal(f.job().status,'complete');assert.equal(f.state.calls,1);assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));
-  const m=await(await f.env.ARTIFACTS.get('runs/run_fixture/card/manifest.json')).json();assert.equal(m.generation.mode,'modular');assert.equal(m.foreground_sha256,await sha(f.state.map.get(m.foreground_key)));assert.equal(m.final_opaque,true);f.close();
+await check('obsolete modular live input is blocked before the provider',async()=>{
+ const f=await fixture({generation:{mode:'modular',category:'C1',background:'transparent'}});await f.generate();assert.equal(f.job().status,'blocked');assert.equal(f.state.calls,0);assert.equal(f.attempt(),undefined);f.close();
 });
 await check('whole-card alpha rejection retains raw and reports safe contract error',async()=>{
-  const f=await fixture({generation:{mode:'whole_card',category:'C4',background:'opaque'}});await f.generate();await f.recover();assert.equal(f.job().status,'needs_review');assert.equal(f.attempt().actual,cost);assert.equal(f.state.calls,1);
-  const failure=f.events().find(e=>e.stage==='source_alpha_validation'&&e.outcome==='failed');assert.equal(failure.error.code,'GENERATION_CONTRACT_FAILED');assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(raw));assert.equal(f.state.map.has('runs/run_fixture/card/final.png'),false);f.close();
+  const f=await fixture({generation:{mode:'whole_card',category:'C4',background:'opaque'}});await f.generate();const transparent=await mockPNG(1376,1536);f.state.map.set(f.rawKey,transparent);const receipt=JSON.parse(new TextDecoder().decode(f.state.map.get(f.receiptKey)));receipt.raw_sha256=await sha(transparent);await f.env.ARTIFACTS.put(f.receiptKey,JSON.stringify(receipt));await f.recover();assert.equal(f.job().status,'needs_review');assert.equal(f.attempt().actual,cost);assert.equal(f.state.calls,1);
+  const failure=f.events().find(e=>e.stage==='source_alpha_validation'&&e.outcome==='failed');assert.equal(failure.error.code,'GENERATION_CONTRACT_FAILED');assert.equal(await sha(f.state.map.get(f.rawKey)),await sha(transparent));assert.equal(f.state.map.has('runs/run_fixture/card/final.png'),false);f.close();
 });
 console.log(JSON.stringify({passed,externalRequests:0,paidRequests:0,telemetryWarningsCaptured:warnings.length}));
 }finally{console.error=originalError;}

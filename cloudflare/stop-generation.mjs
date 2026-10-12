@@ -15,8 +15,8 @@ export async function stopGeneration(env,auth,body){
   }else await env.DB.prepare("UPDATE planner_requests SET status='cancelled' WHERE id=?").bind(item.id).run();
   const rows=(await env.DB.prepare(item.field==='runId'?"SELECT a.* FROM attempts a JOIN jobs j ON j.id=a.job_id WHERE j.run_id=? AND a.mode='live' AND a.actual IS NULL AND a.status<>'closed_reserved_unknown'":"SELECT * FROM attempts WHERE job_id=? AND mode='live' AND actual IS NULL AND status<>'closed_reserved_unknown'").bind(item.id).all()).results||[];
   for(const a of rows){
-   await journalEvent(env,a.job_id,'user-stop-reserve','manual_accounting_closure',{principal_id:auth.principalId,previous_reservation_nanodollars:a.reservation,reservation_nanodollars:1000000000,actual_cost_nanodollars:null,decision:'User stops; unknown cost reserve $1; preserve receipts; no replay',provider_calls:0});
-   await env.DB.prepare("UPDATE attempts SET status='closed_reserved_unknown',reservation=1000000000 WHERE job_id=? AND actual IS NULL").bind(a.job_id).run();closed++;
+   await journalEvent(env,a.job_id,'user-stop-reserve','manual_accounting_closure',{principal_id:auth.principalId,previous_reservation_nanodollars:a.reservation,reservation_nanodollars:a.reservation,actual_cost_nanodollars:null,decision:'User stops generation only; preserve full unknown-cost reserve and receipts; no replay',provider_calls:0});
+   await env.DB.prepare("UPDATE attempts SET status='unknown' WHERE job_id=? AND actual IS NULL").bind(a.job_id).run();closed++;
   }
  }
  return {stopped:true,closed_unknown:closed,provider_calls:0,inflight_requests_cannot_be_recalled:true};

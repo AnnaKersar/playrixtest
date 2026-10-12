@@ -63,3 +63,5 @@ html,body.generator-page{height:100%;overflow:hidden}.generator-page{display:gri
 .card-selection a{display:block;margin:8px 0}
 
 #resume-collection[hidden]{display:none!important}
+
+#collection-errors{margin:12px 0;padding:10px 14px;border:1px solid #dca67b;border-radius:12px;background:#fff3df;color:#754922;line-height:1.45}#collection-errors[hidden]{display:none!important}#collection-errors p{margin:4px 0}

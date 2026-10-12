@@ -10,13 +10,13 @@ for(const id of ['old','active','saved']){
  db.prepare('INSERT INTO jobs (id,run_id,object_id) VALUES (?,?,?)').run(id,'r',id);
  db.prepare("INSERT INTO attempts (job_id,mode,status,reservation,created_at) VALUES (?,'live','claimed',10000000000,?)").run(id,new Date(Date.now()-(id==='old'?21*60*1000:1000)).toISOString());
 }
-objects.set('runs/r/saved/receipt.json',{raw_key:'runs/r/saved/raw.png',raw_sha256:'s',cost:120000000,usage:null});
+objects.set('runs/r/saved/receipt.json',{raw_key:'runs/r/saved/raw.png',raw_sha256:'s',cost:141000,usage:{input_tokens:3,input_tokens_details:{text_tokens:1,image_tokens:2},output_tokens:4,total_tokens:7}});
 const auth={role:'owner',principalId:'owner'},result=await reconcilePreviousAttempts(env,auth);
-assert.equal(result.closed_unknown,1);assert.equal(result.settled,1);assert.equal(result.still_running,1);assert.equal(result.provider_calls,0);
-assert.equal(db.prepare("SELECT reservation FROM attempts WHERE job_id='old'").get().reservation,1000000000);
-assert.equal(db.prepare("SELECT actual FROM attempts WHERE job_id='saved'").get().actual,120000000);
+assert.equal(result.unknown_preserved,1);assert.equal(result.settled,1);assert.equal(result.still_running,1);assert.equal(result.provider_calls,0);
+assert.equal(db.prepare("SELECT reservation FROM attempts WHERE job_id='old'").get().reservation,10000000000);
+assert.equal(db.prepare("SELECT actual FROM attempts WHERE job_id='saved'").get().actual,141000);
 assert.equal(db.prepare("SELECT status FROM attempts WHERE job_id='active'").get().status,'claimed');
 const again=await reconcilePreviousAttempts(env,auth);assert.equal(again.closed_unknown,0);assert.equal(again.settled,0);
 await assert.rejects(()=>reconcilePreviousAttempts(env,{role:'guest'}));
-console.log('PASS durable receipt settlement, expired unknown $1, active request protected, idempotency and owner access; provider calls 0');
+console.log('PASS durable receipt settlement, expired unknown full hold, active request protected, idempotency and owner access; provider calls 0');
 

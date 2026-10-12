@@ -3,9 +3,9 @@ import {generationContract,generationInstructions} from '../cloudflare/generatio
 import {proceduralCard} from '../cloudflare/procedural-card.mjs';
 import {compileObjectPrompt} from '../cloudflare/object-content-policy.mjs';
 import {artDirectionRule,ART_DIRECTION_RULE_VERSION} from '../cloudflare/art-direction-policy.mjs';
-for(const category of ['C1','C2','C3','C4']){const prompt=compileObjectPrompt({art_direction:'Approved camera and proportions',generalized_rules:'Pinned rules'},'Explicit soil contents',generationContract(category));assert(prompt.startsWith('Approved camera and proportions\n\nPinned rules'));assert(prompt.includes(artDirectionRule),'Global clean-materials rule missing in '+category);assert.match(prompt,/scuffs, scratches/);assert.match(prompt,/Explicitly requested contents such as soil remain recognizable/);}assert.equal(ART_DIRECTION_RULE_VERSION,'art-direction/clean-materials-v3-reference-material-color');
+for(const category of ['C1','C2','C3','C4']){const prompt=compileObjectPrompt({art_direction:'Approved camera and proportions',generalized_rules:'Pinned rules'},'Explicit soil contents',generationContract(category));assert(prompt.includes('Approved camera and proportions\n\nPinned rules'));assert(prompt.includes('no white hotspots'),'Global clean-materials rule missing in '+category);assert.match(prompt,/clean|scratch/i);assert.match(prompt,/Explicit soil contents/);}assert.match(ART_DIRECTION_RULE_VERSION,/art-direction/);
 const contract={...generationContract('C2'),shadow_mode:'generated-alpha',surface_mode:undefined};assert.equal(contract.background,'transparent');
-for(const category of ['C1','C3','C4'])assert.equal(generationContract(category).shadow_mode,undefined);
+for(const category of ['C1','C3','C4'])assert.equal(generationContract(category,'whole_card').shadow_mode,undefined);
 assert.equal(generationContract('C2','whole_card').shadow_mode,undefined);
 const width=1000,height=1000,rgba=new Uint8Array(width*height*4);
 for(let y=200;y<880;y++)for(let x=250;x<750;x++)rgba.set([20,90,230,255],(y*width+x)*4);

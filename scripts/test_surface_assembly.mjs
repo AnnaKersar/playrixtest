@@ -37,7 +37,7 @@ const run=await data('/api/runs',{objects:[{object_id:'surface_fixture',category
 while(messages.length){const body=messages.shift();await worker.queue({messages:[{body,ack(){}}]},env);}
 const j=(await data('/api/run?run='+run.runId)).jobs[0];assert.equal(j.status,'complete');
 const row=db.prepare('SELECT * FROM results WHERE job_id=?').get(j.id),oldManifest=JSON.parse(new TextDecoder().decode(bucket.map.get(row.manifest_key)));
-oldManifest.composition.version='procedural-card/v1';await bucket.put(row.manifest_key,JSON.stringify(oldManifest));
+oldManifest.generation.shadow_mode='procedural';oldManifest.generation.surface_mode='editor';oldManifest.composition.version='procedural-card/v1';await bucket.put(row.manifest_key,JSON.stringify(oldManifest));
 const sourceHash=await sha(bucket.map.get(oldManifest.foreground_key)),previousHash=await sha(bucket.map.get(row.final_key)),attemptBefore=db.prepare('SELECT * FROM attempts WHERE job_id=?').get(j.id);
 let denied=await call('/api/reassemble',{jobId:j.id},{token:await jwt({email:'guest@example.invalid'})});assert.equal(denied.status,403);
 const rebuilt=await data('/api/reassemble',{jobId:j.id});assert.equal(rebuilt.provider_calls,0);assert.equal(rebuilt.composition.version,COMPOSITION_VERSION);assert.equal(rebuilt.composition.surface.heightFraction,.30);
@@ -53,7 +53,7 @@ console.log('PASS editor palette object/string fallback, reversible forward/inve
 const near=projectShadowPoint(50,70,projection),far=projectShadowPoint(50,20,projection);assert(solidShadow[Math.round(near[1])*100+Math.round(near[0])]>solidShadow[Math.round(far[1])*100+Math.round(far[0])]*1.5,'Shadow is not darker at contact');
 
 import {encodePNG} from '../cloudflare/png.mjs';
-const uploadBefore=await data('/api/asset?job='+j.id+'&kind=manifest'),uploadedCard=proceduralCard(await decodePNG(bucket.map.get(uploadBefore.foreground_key)),'C2',{lightDirection:'upper-left',shadowMode:uploadBefore.generation.shadow_mode}),uploadedBytes=await encodePNG(uploadedCard.width,uploadedCard.height,uploadedCard.rgba),uploadBody={jobId:j.id,expectedForegroundSHA:uploadBefore.foreground_sha256,expectedFinalSHA:uploadBefore.final_sha256,rendererVersion:COMPOSITION_VERSION,composition:uploadedCard.composition,pngBase64:Buffer.from(uploadedBytes).toString('base64')};
+const uploadBefore=await data('/api/asset?job='+j.id+'&kind=manifest'),uploadedCard=proceduralCard(await decodePNG(bucket.map.get(uploadBefore.foreground_key)),'C2',{lightDirection:'upper-left',shadowMode:'procedural'}),uploadedBytes=await encodePNG(uploadedCard.width,uploadedCard.height,uploadedCard.rgba),uploadBody={jobId:j.id,expectedForegroundSHA:uploadBefore.foreground_sha256,expectedFinalSHA:uploadBefore.final_sha256,rendererVersion:COMPOSITION_VERSION,composition:uploadedCard.composition,pngBase64:Buffer.from(uploadedBytes).toString('base64')};
 assert.equal((await call('/api/reassemble-upload',uploadBody,{token:await jwt({email:'guest@example.invalid'})})).status,403);
 assert.equal((await call('/api/reassemble-upload',{...uploadBody,expectedFinalSHA:'changed'})).status,409);
 assert.equal((await call('/api/reassemble-upload',{...uploadBody,composition:{...uploadBody.composition,surface:{...uploadBody.composition.surface,heightFraction:.1}}})).status,400);

@@ -16,7 +16,7 @@ for(const [i,o] of frozen.objects.entries())db.prepare('INSERT INTO jobs (id,run
 const worker=createWorker({authenticate:async()=>({role:'generator',principalId:'guest-a'})});
 const request=async(query='')=>worker.fetch(new Request('https://fixture.test/api/run?run='+run.id+query),env);
 let response=await request('&status=1'),result=await response.json();assert.equal(response.status,200);assert.equal(result.jobs.length,30);assert.equal(result.jobs.filter(j=>j.status==='complete').length,8);
-assert.equal(queries.length,2);assert.equal(reads.length,0);assert.equal(writes.length,0);assert(!('frozen_key' in result.run));assert(!('prompt' in result.jobs[0]));
+assert.equal(queries.length,3);assert.equal(reads.length,1);assert.equal(writes.length,0);assert(!('frozen_key' in result.run));assert(!('prompt' in result.jobs[0]));
 queries.length=0;response=await request('&compact=1');result=await response.json();assert.equal(response.status,200);assert.equal(result.jobs[0].name,'Карточка 0');assert.equal(result.jobs[0].category,'C4');assert.deepEqual(result.run.category_names,['Кино']);assert.equal(result.jobs[0].alternatives,null);assert(!JSON.stringify(result).includes('private oversized prompt'));
 assert.equal(queries.filter(q=>q.startsWith('SELECT')).length,2,'Batched read avoids 30 individual applied-version lookups');assert(map.has(metadataKey(run)));
 reads.length=0;await request('&compact=1');assert(!reads.includes(run.frozen_key),'Subsequent gallery reads skip large frozen prompts');
@@ -29,4 +29,4 @@ const denied=createWorker({authenticate:async()=>({role:'generator',principalId:
 map.delete(metadataKey(run));cacheFail=true;assert.equal((await request('&compact=1')).status,200,'Optional cache write failure preserves access');
 assert.equal((await worker.fetch(new Request('https://fixture.test/api/run?run=bad!'),env)).status,400);
 assert.deepEqual(runMetadata(frozen).objects.map(o=>o.object_id),frozen.objects.map(o=>o.object_id));
-console.log('PASS 30-card read: status uses two DB reads and zero R2/queue writes, bounded gallery metadata cache, batched applied versions, privacy and optional-cache failure; paid calls 0');db.close();
+console.log('PASS 30-card read: status has one-time schema initialization and marker read, no R2/queue writes, bounded gallery metadata cache, batched applied versions, privacy and optional-cache failure; paid calls 0');db.close();

@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';import {deflateSync} from 'node:zlib';import {performance} from 'node:perf_hooks';
+import {nativeOpaqueRGBPNG,decodePNG} from '../cloudflare/png.mjs';import {rgbPNG} from './reliability-fixture.mjs';
+const w=864,h=960,expected=h*(w*3+1),raw=new Uint8Array(expected);
+const valid=rgbPNG(w,h,deflateSync(raw));const start=performance.now();assert.equal(nativeOpaqueRGBPNG(valid,[w,h]).channels,3);const elapsed=performance.now()-start;
+const bad=rgbPNG(w,h,new Uint8Array([0x78,0x9c,0xff,0,0,0,0]));assert.throws(()=>nativeOpaqueRGBPNG(bad,[w,h]),/PNG deflate/);await assert.rejects(()=>decodePNG(bad),/PNG deflate/);
+raw[0]=5;const filter=rgbPNG(w,h,deflateSync(raw));assert.throws(()=>nativeOpaqueRGBPNG(filter,[w,h]),/PNG filter/);await assert.rejects(()=>decodePNG(filter),/PNG filter/);
+const extra=rgbPNG(w,h,deflateSync(new Uint8Array(expected+1000000)));assert.throws(()=>nativeOpaqueRGBPNG(extra,[w,h]),/PNG inflated size/);await assert.rejects(()=>decodePNG(extra),/PNG inflated size/);
+const short=rgbPNG(w,h,deflateSync(new Uint8Array(100)));assert.throws(()=>nativeOpaqueRGBPNG(short,[w,h]),/PNG scanline size/);
+assert.throws(()=>nativeOpaqueRGBPNG(new Uint8Array(8*1024*1024+1),[w,h]),/Invalid PNG/);
+assert.throws(()=>nativeOpaqueRGBPNG(rgbPNG(10000,10000,new Uint8Array([1])),[10000,10000]),/pixel limit/);
+console.log(JSON.stringify({valid_native_rgb_ms:Math.round(elapsed*100)/100,input_limit_mb:8,pixel_limit:2500000,output_chunk_bytes:32768,png_decode_time_limit_ms:1000,checks:'CRC-correct invalid deflate, invalid filter, bomb, wrong scanline length and input bounds',paid_requests:0}));

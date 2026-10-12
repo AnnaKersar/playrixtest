@@ -1,3 +1,5 @@
+import {resetGuestBudget} from './guest-budget-period.mjs';
+import {acquireFinalization,completeFinalization,failFinalization,sweepFinalizations,resetFailedFinalization} from './finalization-recovery.mjs';
 import {restoreImageReceipt} from './receipt-recovery.mjs';
 import {resumeGeneration,runStopped} from './resume-generation.mjs';
 import {replacementTarget,automaticEditNote} from './card-replacement-policy.mjs';
@@ -70,7 +72,7 @@ async function createRun(env,body,auth,options={}){
     if(env.LIVE_GENERATION_ENABLED!=='true'||!env.OPENAI_API_KEY||auth.principalId!=='owner'&&!guestPaidEnabled(env))fail(403,'Live generation disabled');
     if(objects.some(o=>!['C1','C2','C3','C4'].includes(o.category)||o.generation_mode!=='whole_card'))fail(409,'Эта коллекция должна генерироваться целиком. Обновите страницу перед новым запуском; модульная генерация отключена.');
     if(body.approval!=='I approve one paid attempt per object')fail(400,'Explicit per-run paid approval required');
-    const budget=await one(env,'SELECT * FROM budget WHERE id=1');if(!budget?.approved)fail(409,'Approved budget baseline required');const state=await budgetState(env);if(state.live_blockers.length)fail(409,state.live_blockers.join(', '));if(auth.principalId!=='owner'&&state.guest_remaining<=0)fail(409,'Shared guest budget exhausted');reservationFor(env,'image',auth.principalId);manifest=(await references(env,{manifestOnly:true})).manifest;
+    const budget=await one(env,'SELECT * FROM budget WHERE id=1');if(!budget?.approved)fail(409,'Approved budget baseline required');const state=await budgetState(env);if(state.live_blockers.length)fail(409,state.live_blockers.join(', '));if(auth.principalId!=='owner'&&state.guest_live_blockers.length)fail(409,'Гостевые вызовы остановлены: стоимость ответа превысила резерв. Нужна ручная проверка.');if(auth.principalId!=='owner'&&state.guest_remaining<=0)fail(409,'Shared guest budget exhausted');reservationFor(env,'image',auth.principalId);manifest=(await references(env,{manifestOnly:true})).manifest;
   }
   if(body.planner_request_id!==undefined){if(!safeId(body.planner_request_id))fail(400,'Invalid planner request');const origin=await one(env,'SELECT principal_id FROM planner_requests WHERE id=?',body.planner_request_id);if(!origin||origin.principal_id!==auth.principalId)fail(403,'Planner origin access denied');}
   if(body.requestId!==undefined&&!safeId(body.requestId))fail(400,'Invalid stable request ID');
@@ -89,7 +91,7 @@ async function createRun(env,body,auth,options={}){
 async function finishReceipt(env,job,attempt,processing,deps={}){
   const {receipt,bytes}=await processing.stage('read_raw_receipt',async()=>{
     const receipt=await getJSON(env,attempt.receipt_key),raw=await env.ARTIFACTS.get(receipt.raw_key);
-    if(!raw)throw Error('Missing stored raw PNG');
+    if(!raw)throw Error('Missing stored raw PNG');if(raw.size>25*1024*1024)throw Error('PNG input size limit');
     const bytes=new Uint8Array(await raw.arrayBuffer());
     if(await sha(bytes)!==receipt.raw_sha256)throw Error('Stored raw SHA mismatch');
     return {receipt,bytes};
@@ -126,7 +128,7 @@ async function finishReceipt(env,job,attempt,processing,deps={}){
   },{output_bytes:final.length});
   await processing.stage('final_d1_status',()=>env.DB.batch([
     query(env,'INSERT OR REPLACE INTO results VALUES (?,?,?,?)',job.id,receipt.raw_key,finalKey,manifestKey),
-    query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,job.id),
+    query(env,"UPDATE attempts SET status=CASE WHEN ? IS NULL THEN CASE WHEN status='closed_reserved_unknown' THEN status ELSE 'unknown' END WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,error=NULL WHERE job_id=?",receipt.cost,receipt.cost,receipt.cost,job.id),
     query(env,"UPDATE jobs SET status='complete' WHERE id=?",job.id)
   ]));
   await processing.journal('storage-recovered','storage_recovered',{raw_sha256:manifest.raw_sha256,final_sha256:manifest.final_sha256,manifest_sha256:await sha(JSON.stringify(manifest)),usage_calculated_cost_nanodollars:receipt.cost,invoice_actual_cost_nanodollars:null,final_dimensions:savedFrozen.final});
@@ -211,13 +213,16 @@ export async function processJob(env,jobId,deps={}){
     const answer=await processing.stage('provider_response',async()=>run.mode==='mock'?{png:await contractMockPNG(object.generation,frozen.native),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background,size:frozen.native.join('x'),sourceImage,stage:(...args)=>processing.stage(...args)}),{},answer=>({output_bytes:answer.png.length}));
     const rawKey=`runs/${job.run_id}/${job.object_id}/raw.png`,receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`,cost=run.mode==='mock'?0:usageCost(answer.usage);
     await processing.journal('provider-returned','provider_returned',{finished_at:new Date().toISOString(),elapsed_ms:Date.now()-started,request_id:answer.requestId,requested_model:frozen.model,actual_model:answer.model||null,usage:answer.usage,usage_calculated_cost_nanodollars:cost,reservation_nanodollars:reserve,invoice_actual_cost_nanodollars:null,raw_sha256:await sha(answer.png)});
-    await processing.stage('raw_r2_write',()=>env.ARTIFACTS.put(rawKey,answer.png,{httpMetadata:{contentType:'image/png'}}),{input_bytes:answer.png.length});
     const receipt={raw_key:rawKey,raw_sha256:await sha(answer.png),usage:answer.usage,request_id:answer.requestId,cost};
+    await processing.stage('pending_receipt_r2_write',()=>putJSON(env,`runs/${job.run_id}/${job.object_id}/pending-receipt.json`,receipt));
+    await processing.stage('raw_r2_write',()=>env.ARTIFACTS.put(rawKey,answer.png,{httpMetadata:{contentType:'image/png'}}),{input_bytes:answer.png.length});
+
     await processing.stage('receipt_r2_write',()=>putJSON(env,receiptKey,receipt));
     await processing.stage('receipt_d1_status',async()=>{
     await query(env,"UPDATE attempts SET status=CASE WHEN status='closed_reserved_unknown' THEN status ELSE 'received' END,receipt_key=? WHERE job_id=?",receiptKey,job.id).run();
     // The provider receipt is durable: settle known usage before a separate CPU-heavy finalization job.
     if(cost!==null){await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=? WHERE job_id=?",cost,cost,job.id).run();}
+    else await query(env,"UPDATE attempts SET status='unknown' WHERE job_id=? AND actual IS NULL AND status<>'closed_reserved_unknown'",job.id).run();
     });
     await sendFinalization(env,job,processing);
   }catch(error){
@@ -298,7 +303,7 @@ export function createWorker(deps={}){return {
 
 
       if(url.pathname==='/api/resume-generation'&&request.method==='POST'){
-        const body=await bodyJSON(request);
+        const body=await bodyJSON(request);let resumeReferences;
         return json(await resumeGeneration(env,auth,body.runId,{prepare:async job=>{
           if(await one(env,'SELECT attempt_id FROM experiment_journal WHERE attempt_id=?',job.id))return;
           const run=await one(env,'SELECT * FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key),object=frozen.objects.find(o=>o.object_id===job.object_id);
@@ -368,7 +373,7 @@ export function createWorker(deps={}){return {
       if(url.pathname==='/api/journal'&&request.method==='GET'){ownerOnly(auth);return json(await journalRead(env,url.searchParams.get('attempt')));}
       if(url.pathname==='/api/journal/feedback'&&request.method==='POST'){ownerOnly(auth);return json(await journalFeedback(env,await bodyJSON(request)));}
       if(url.pathname.startsWith('/editor/')&&request.method==='GET')return await privateEditor(request,env);
-      if(url.pathname==='/api/preflight'&&request.method==='GET'){const state=await readiness(env);if(auth.role!=='owner'){const blockers=[...(state.budget?.live_blockers||[])];if(!guestPaidEnabled(env))blockers.push('guest_paid_disabled');if(state.budget?.guest_remaining<=0)blockers.push('shared_guest_budget_exhausted');if(state.budget?.remaining<10000000000)blockers.push('project_budget_unavailable');return json({version:state.version,role:auth.role,principalId:auth.principalId,mock_ready:state.mock_ready,live_enabled:guestPaidEnabled(env)&&state.live_enabled&&state.live_missing.length===0,missing:state.missing.length?['configuration_unavailable']:[],planner:{live:guestPaidEnabled(env)&&state.planner.live,ready:state.planner.ready,missing:state.planner.missing.length?['planner_configuration_unavailable']:[]},budget:state.budget?{guest_ceiling:state.budget.guest_ceiling,guest_remaining:state.budget.guest_remaining,live_blockers:blockers}:null});}return json({...state,role:auth.role,principalId:auth.principalId});}
+      if(url.pathname==='/api/preflight'&&request.method==='GET'){const state=await readiness(env);if(auth.role!=='owner'){const blockers=[...(state.budget?.live_blockers||[]),...(state.budget?.guest_live_blockers||[])];if(!guestPaidEnabled(env))blockers.push('guest_paid_disabled');if(state.budget?.guest_remaining<=0)blockers.push('shared_guest_budget_exhausted');if(guestPaidEnabled(env)&&state.budget?.remaining<reservationFor(env,'image',auth.principalId))blockers.push('project_budget_unavailable');return json({version:state.version,role:auth.role,principalId:auth.principalId,mock_ready:state.mock_ready,live_enabled:guestPaidEnabled(env)&&state.live_enabled&&state.live_missing.length===0,missing:state.missing.length?['configuration_unavailable']:[],planner:{live:guestPaidEnabled(env)&&state.planner.live,ready:state.planner.ready,missing:state.planner.missing.length?['planner_configuration_unavailable']:[]},budget:state.budget?{guest_ceiling:state.budget.guest_ceiling,guest_remaining:state.budget.guest_remaining,live_blockers:blockers}:null});}return json({...state,role:auth.role,principalId:auth.principalId});}
       if(url.pathname.startsWith('/api/')){
         await requireReady(env,url.pathname);
         if(request.method==='GET'){
@@ -388,16 +393,14 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/plan-mock'){generationRole(auth);return json(await planMock(body));}
           if(url.pathname==='/api/runs'){if(auth.role==='owner')await reconcilePreviousAttempts(env,auth);return json(await createRun(env,body,auth),201);}
           if(url.pathname==='/api/requeue-run'){ownerOnly(auth);if(!safeId(body.runId))fail(400,'Invalid run ID');await runAccess(env,auth,body.runId);if(await runStopped(env,body.runId))fail(409,'Collection cancelled');const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status IN ('queued','failed','blocked') AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",body.runId);let sent=0;for(const job of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',job.id))continue;await query(env,"UPDATE jobs SET status='queued' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();await queueDiagnostic(env,job.id,'requeue_requested');await env.IMAGE_JOBS.send({version:1,jobId:job.id});sent++;}return json({runId:body.runId,sent,planner_repeated:false,previous_provider_attempts_repeated:false});}
+          if(url.pathname==='/api/budget/reset-guests')return json(await resetGuestBudget(env,auth,body));
           if(url.pathname==='/api/dispatch'){ownerOnly(auth);return json({sent:await dispatch(env)});}
           if(url.pathname==='/api/candidates')return json(await saveCandidates(env,body,auth));
           if(url.pathname==='/api/choices')return json(await saveChoice(env,body,auth));
           if(url.pathname==='/api/recover'){ownerOnly(auth);
-            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete'){
- const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status='queued' AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",job.run_id);
- let queued=0;for(const pending of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',pending.id))continue;await env.IMAGE_JOBS.send({version:1,jobId:pending.id});queued++;}
- return json({recovered:true,provider_calls:0,idempotent:true,unstarted_cards_queued:queued});
-}
+            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
             await restoreImageReceipt(env,job,attempt);
+            const reset=await resetFailedFinalization(env,job.id);if(reset.meta.changes)await journalEvent(env,job.id,'manual-recovery-'+crypto.randomUUID(),'manual_finalization_retry',{principal_id:auth.principalId,provider_calls:0});
             const processing=createProcessing(env,job,{kind:'recovery-request'});
             try{await sendFinalization(env,job,processing);}
             catch(error){
@@ -414,6 +417,7 @@ export function createWorker(deps={}){return {
       const asset=await env.ASSETS.fetch(request),headers=new Headers(asset.headers);headers.set('Cache-Control','private, no-store');headers.set('X-Content-Type-Options','nosniff');headers.set('Referrer-Policy','no-referrer');headers.set('Content-Security-Policy',"default-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");return new Response(asset.body,{status:asset.status,headers});
     }catch(error){const diagnostic=crypto.randomUUID();if(!error.status){const table=/no such table: ([a-zA-Z0-9_]+)/.exec(String(error.message));console.error(JSON.stringify({event:'api-failed',diagnostic,route:url.pathname,kind:table?'missing-database-table':'storage-or-configuration',...(table?{table:table[1]}:{})}));return json({error:table?'Database migration missing: '+table[1]+'; no automatic provider retry.':'Storage or configuration failure; no automatic provider retry.',route:url.pathname,diagnostic},503);}return json({error:error.message,route:url.pathname},error.status);} 
   },
+  async scheduled(event,env){return sweepFinalizations(env);},
   async queue(batch,env){
     for(const message of batch.messages){
       let processing=null,job=null;
@@ -429,16 +433,25 @@ export function createWorker(deps={}){return {
                 await processing.event('finalization_receive','succeeded',{parent_execution_id:message.body.parentExecutionId});
                 const attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',job.id);
                 if(attempt&&job.status!=='complete'){
-                  const key='runs/'+job.run_id+'/'+job.object_id+'/receipt.json';
-                  await query(env,"UPDATE jobs SET status='running' WHERE id=? AND status<>'complete'",job.id).run();
-                  await finishReceipt(env,job,{...attempt,receipt_key:key},processing,deps);
-                  await processing.end('complete');
+                  const lease=await acquireFinalization(env,job.id);
+                  if(!lease){message.ack();continue;}
+                  try{
+                    const restored=await restoreImageReceipt(env,job,attempt);
+                    await query(env,"UPDATE jobs SET status='running' WHERE id=? AND status<>'complete'",job.id).run();
+                    await finishReceipt(env,job,{...attempt,receipt_key:restored.receipt_key},processing,deps);
+                    await completeFinalization(env,lease);await processing.end('complete');
+                  }catch(error){
+                    let outcome;try{outcome=await failFinalization(env,lease,error);}catch{message.retry({delaySeconds:30});continue;}
+                    try{await processing.end(outcome.terminal?'needs_review':'retrying_finalization',error);}catch{}
+                    if(!outcome.terminal){message.retry({delaySeconds:outcome.delay});continue;}
+                  }
                 }else await processing.event('recovery_skipped','succeeded',{},'skipped');
               }else await processJob(env,message.body.jobId,{...deps,processing});
             }
           }
         }
       }catch(error){
+        if(message.body.kind==='image-recovery'){message.retry({delaySeconds:30});continue;}
         const jobId=message.body?.jobId;
         if(safeId(jobId)){
           const safe=safeProcessingError(error,processing?.failedStage);
@@ -482,16 +495,21 @@ const cardEditsReady=new WeakMap();
 async function ensureCardEdits(env){if(cardEditsReady.has(env.DB))return cardEditsReady.get(env.DB);const ready=(async()=>{await query(env,'CREATE TABLE IF NOT EXISTS card_edits (source_job_id TEXT NOT NULL,edit_job_id TEXT PRIMARY KEY,run_id TEXT NOT NULL,request_key TEXT NOT NULL,note TEXT NOT NULL,created_at TEXT NOT NULL)').run();await query(env,'CREATE TABLE IF NOT EXISTS card_applied (source_job_id TEXT PRIMARY KEY,edit_job_id TEXT NOT NULL,applied_at TEXT NOT NULL)').run();})();cardEditsReady.set(env.DB,ready);try{await ready;}catch(e){cardEditsReady.delete(env.DB);throw e;}}
 export async function reconcilePreviousAttempts(env,auth){
  ownerOnly(auth);const rows=await all(env,"SELECT * FROM attempts WHERE mode='live' AND (status<>'complete' OR actual IS NULL) AND status NOT IN ('closed_reserved_unknown','cost_bound_exceeded')");
- const report={settled:0,closed_unknown:0,still_running:0,provider_calls:0};
+ const report={settled:0,closed_unknown:0,unknown_preserved:0,still_running:0,provider_calls:0};
  for(const a of rows){
   const job=await one(env,'SELECT * FROM jobs WHERE id=?',a.job_id);
   const cancelled=job&&!!await runStopped(env,job.run_id);
   const stale=Date.now()-Date.parse(a.created_at)>=20*60*1000;
   const evidence=await accountingEvidence(env,a);
+  // Cancelling image work does not discard a verifiable provider receipt or charge.
+  if(job&&!evidence.receipt_present&&await env.ARTIFACTS.head('runs/'+job.run_id+'/'+job.object_id+'/raw.png')){
+   try{await restoreImageReceipt(env,job,a);const restored=await one(env,'SELECT actual FROM attempts WHERE job_id=?',a.job_id);if(restored.actual!=null){report.settled++;continue;}}
+   catch(error){if(![404,409].includes(error.status))throw error;} // Keep the full hold when evidence cannot be verified.
+  }
   if(evidence.receipt_present){
    const key=evidence.receipt_key;
    if(!job){await recoverPlan(env,a.job_id);const fresh=await one(env,'SELECT * FROM attempts WHERE job_id=?',a.job_id);if(fresh.actual!=null){report.settled++;continue;}}
-   const receipt=await getJSON(env,key),cost=job?(receipt.cost??usageCost(receipt.usage)):null;
+   const receipt=await getJSON(env,key),calculated=job?usageCost(receipt.usage):null,cost=job&&receipt.cost===calculated?calculated:null;
    if(Number.isSafeInteger(cost)&&cost>=0){
     await journalEvent(env,a.job_id,'auto-accounting-settled-'+cost,'automatic_accounting_reconciliation',{principal_id:auth.principalId,actual_cost_nanodollars:cost,receipt_key:key,provider_calls:0});
     await query(env,"UPDATE attempts SET status=CASE WHEN ?>reservation AND budget_scope<>'guests-shared-soft-v1' THEN 'cost_bound_exceeded' ELSE 'complete' END,actual=?,receipt_key=? WHERE job_id=? AND (status<>'complete' OR actual IS NULL)",cost,cost,key,a.job_id).run();report.settled++;continue;
@@ -502,8 +520,9 @@ export async function reconcilePreviousAttempts(env,auth){
    if(!stale&&!cancelled){report.still_running++;continue;}
    await query(env,"UPDATE attempts SET status='complete' WHERE job_id=? AND actual IS NOT NULL",a.job_id).run();report.settled++;continue;
   }else if(a.status==='claimed'&&!stale&&!cancelled){report.still_running++;continue;}
-  await journalEvent(env,a.job_id,'auto-unknown-reserve-one-dollar','automatic_accounting_reconciliation',{principal_id:auth.principalId,previous_reservation_nanodollars:a.reservation,reservation_nanodollars:1000000000,actual_cost_nanodollars:null,receipt_present:evidence.receipt_present,decision:'User-authorized unknown-cost reserve $1; preserve evidence; no provider replay',provider_calls:0});
-  const r=await query(env,"UPDATE attempts SET status='closed_reserved_unknown',reservation=1000000000 WHERE job_id=? AND actual IS NULL AND status<>'closed_reserved_unknown'",a.job_id).run();report.closed_unknown+=r.meta.changes||0;
+  // An absent price is not a zero charge. Preserve the entire original reservation.
+  await query(env,"UPDATE attempts SET status='unknown' WHERE job_id=? AND actual IS NULL AND status<>'closed_reserved_unknown'",a.job_id).run();report.unknown_preserved++;
+
  }
  return report;
 }

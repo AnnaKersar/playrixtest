@@ -13,6 +13,6 @@ for(const category of ['C2','C3','C4']) {
  assert(layout.includes('y=826–845px'));
  assert(layout.includes('beyond its y=768px horizon'));
 }
-assert.equal(resolveLegacyPlacement(legacy,'C1'),legacy);
+assert.match(resolveLegacyPlacement(legacy,'C1'),/subject contact y=86–88%/);
 console.log('PASS: legacy vertical-placement conflicts removed; bottom anchor explicit; C1 unchanged. No provider calls.');
 

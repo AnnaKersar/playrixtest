@@ -1,4 +1,6 @@
 import {Inflate} from './vendor/pako-inflate.mjs';
+// Deterministic byte/pixel/chunk bounds limit work. Elapsed checks are best-effort;
+// Workers cpu_ms is the hard runtime CPU bound (clocks may not advance within a synchronous turn).
 // Bounded PNG RGB/RGBA8 codec. Reject unsupported formats rather than silently changing alpha.
 const sig = new Uint8Array([137,80,78,71,13,10,26,10]);
 const table = Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
@@ -15,13 +17,13 @@ export async function encodePNG(width,height,rgba) {
   return concat([sig,chunk('IHDR',head),chunk('IDAT',storedZlib(scan)),chunk('IEND',new Uint8Array())]);
 }
 export async function decodePNG(bytes) {
-  if(bytes.length>25*1024*1024 || !sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
-  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let p=8,width,height,channels,ended=false;const parts=[];
-  while(p+12<=bytes.length){const n=v.getUint32(p),type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(p+n+12>bytes.length)throw Error('Truncated PNG');
+  const started=Date.now();if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024 || !sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
+  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let p=8,width,height,channels,ended=false,chunks=0;const parts=[];
+  while(p+12<=bytes.length){if(++chunks>4096||Date.now()-started>1000)throw Error('PNG decode resource limit');const n=v.getUint32(p),type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(p+n+12>bytes.length)throw Error('Truncated PNG');
     if(crc(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
     if(p===8&&type!=='IHDR')throw Error('PNG header');
     if(type==='IHDR'){if(width||n!==13)throw Error('PNG header');width=v.getUint32(p+8);height=v.getUint32(p+12);channels=bytes[p+17]===6?4:bytes[p+17]===2?3:0;if(!width||!height||width*height>2500000||bytes[p+16]!==8||!channels||bytes[p+18]||bytes[p+19]||bytes[p+20])throw Error('Unsupported PNG format');}
-    else if(type==='IDAT')parts.push(bytes.subarray(p+8,p+8+n));else if(type==='IEND'){ended=true;break;}else if(type==='tRNS')throw Error('PNG transparency must be RGBA');
+    else if(type==='IDAT')parts.push(bytes.subarray(p+8,p+8+n));else if(type==='IEND'){if(n||p+12!==bytes.length)throw Error('PNG end');ended=true;break;}else if(type==='tRNS')throw Error('PNG transparency must be RGBA');
     p+=n+12;
   }
   if(!ended||!parts.length)throw Error('Incomplete PNG');
@@ -32,11 +34,11 @@ export async function decodePNG(bytes) {
   if(compressed.length<6||(compressed[0]&15)!==8||((compressed[0]<<8)+compressed[1])%31||compressed[1]&32)throw Error('PNG zlib header');
   const inflater=new Inflate({chunkSize:65536,windowBits:15});let count=0;
   inflater.onData=value=>{if(value.length>expected-count)throw Error('PNG inflated size');scan.set(value,count);count+=value.length;};
-  if(!inflater.push(compressed,true)||inflater.err||!inflater.ended)throw Error('PNG deflate: '+(inflater.msg||'incomplete'));
+  for(let i=0;i<compressed.length;i+=4096){if(Date.now()-started>1000)throw Error('PNG decode time limit');if(!inflater.push(compressed.subarray(i,i+4096),i+4096>=compressed.length)||inflater.err)throw Error('PNG deflate: '+(inflater.msg||'incomplete'));}if(!inflater.ended)throw Error('PNG deflate incomplete');
   if(count!==expected)throw Error('PNG scanline size');
   const stride=width*channels,raw=new Uint8Array(height*stride);
   for(let y=0;y<height;y++){
-   const base=y*stride,source=y*(stride+1)+1,f=scan[source-1];
+   if(y%128===0&&Date.now()-started>1000)throw Error('PNG decode time limit');const base=y*stride,source=y*(stride+1)+1,f=scan[source-1];
    if(f===0){raw.set(scan.subarray(source,source+stride),base);continue;}
    if(f>4)throw Error('PNG filter');
    if(f===1){for(let x=0;x<channels;x++)raw[base+x]=scan[source+x];for(let x=channels;x<stride;x++)raw[base+x]=(scan[source+x]+raw[base+x-channels])&255;}
@@ -116,14 +118,15 @@ export function pinnedReferencePNG(bytes){
 
 
 export function nativeOpaqueRGBPNG(bytes,size,checksum=crc){
- if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024||!sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
+ if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>8*1024*1024||!sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
  if(v.getUint32(8)!==13||new TextDecoder().decode(bytes.subarray(12,16))!=='IHDR')throw Error('PNG header');
  if(bytes[25]!==2)return null; // RGBA requires pixel-level alpha validation.
  const width=v.getUint32(16),height=v.getUint32(20);
  if(width!==size[0]||height!==size[1]||bytes[24]!==8||bytes[26]||bytes[27]||bytes[28])throw Error('Provider output dimensions or format differ from frozen direct size');
- let p=8,idat=false,ended=false;
+ let p=8,idat=false,ended=false,chunks=0;
  while(p+12<=bytes.length){
+  if(++chunks>4096)throw Error('PNG chunk limit');
   const n=v.getUint32(p);if(n>bytes.length-p-12)throw Error('Truncated PNG');
   const type=new TextDecoder().decode(bytes.subarray(p+4,p+8));
   if(checksum(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
@@ -133,5 +136,14 @@ export function nativeOpaqueRGBPNG(bytes,size,checksum=crc){
   p+=n+12;
  }
  if(!idat||!ended)throw Error('Incomplete PNG');
- return {width,height,channels:3,opaque:width*height,nonzero:width*height,nonopaque:0,pixels:width*height,verification:'native-rgb-chunks-crc-sha/v1'};
+ // Validate zlib/Adler32, exact scanline length and filters without allocating pixels.
+ if(width*height>2500000)throw Error('PNG pixel limit');
+ const inflater=new Inflate({chunkSize:32768,windowBits:15}),stride=width*3+1,expected=height*stride;
+ let output=0;const started=Date.now(),parts=[];p=8;
+ while(p+12<=bytes.length){const n=v.getUint32(p);if(new TextDecoder().decode(bytes.subarray(p+4,p+8))==='IDAT')parts.push(bytes.subarray(p+8,p+8+n));p+=n+12;}
+ inflater.onData=value=>{if(value.length>expected-output)throw Error('PNG inflated size');for(let i=(stride-output%stride)%stride;i<value.length;i+=stride)if(value[i]>4)throw Error('PNG filter');output+=value.length;if(Date.now()-started>1000)throw Error('PNG decode time limit');};
+ const compressed=parts.length===1?parts[0]:concat(parts);
+ for(let i=0;i<compressed.length;i+=4096){if(Date.now()-started>1000)throw Error('PNG decode time limit');if(!inflater.push(compressed.subarray(i,i+4096),i+4096>=compressed.length)||inflater.err)throw Error('PNG deflate: '+inflater.msg);}
+ if(!inflater.ended||output!==expected)throw Error('PNG scanline size');
+ return {width,height,channels:3,opaque:width*height,nonzero:width*height,nonopaque:0,pixels:width*height,verification:'native-rgb-bounded-deflate-crc-sha/v2'};
 }

@@ -1,3 +1,4 @@
+import {ensureFinalization} from './finalization-recovery.mjs';
 import {runStopped} from './resume-generation.mjs';
 import {runAccess,redactRun} from './roles.mjs';
 const one=(env,sql,...args)=>env.DB.prepare(sql).bind(...args).first();
@@ -24,16 +25,16 @@ async function metadata(env,run){
  return view;
 }
 export async function readRun(env,auth,id,{statusOnly=false,compact=false,ensureCardEdits,readQueueDiagnostic}={}){
- const run=await runAccess(env,auth,id);
+ const run=await runAccess(env,auth,id);await ensureFinalization(env);
  if(statusOnly){
-  const jobs=await all(env,'SELECT id,run_id,object_id,status FROM jobs WHERE run_id=? ORDER BY id',id);
+  const jobs=await all(env,'SELECT j.id,j.run_id,j.object_id,j.status,f.public_error FROM jobs j LEFT JOIN finalization_jobs f ON f.job_id=j.id WHERE run_id=? ORDER BY j.id',id);
   return {run:{...redactRun(run),cancelled:await runStopped(env,id)},jobs};
  }
  await ensureCardEdits(env);
  const view=await metadata(env,run),byObject=new Map(view.objects.map(o=>[o.object_id,o]));
- const jobs=await all(env,`SELECT j.*,attempt.error attempt_error,${compact?'NULL':'c.payload'} alternatives,ch.revision,ch.payload choice,
+ const jobs=await all(env,`SELECT j.*,f.public_error,attempt.error attempt_error,${compact?'NULL':'c.payload'} alternatives,ch.revision,ch.payload choice,
  applied.edit_job_id applied_version,edited.object_id applied_object_id,editedRun.id applied_run_id,editedRun.frozen_key applied_frozen_key,editedRun.frozen_sha applied_frozen_sha
- FROM jobs j LEFT JOIN attempts attempt ON attempt.job_id=j.id ${compact?'':'LEFT JOIN candidates c ON c.job_id=j.id'}
+ FROM jobs j LEFT JOIN finalization_jobs f ON f.job_id=j.id LEFT JOIN attempts attempt ON attempt.job_id=j.id ${compact?'':'LEFT JOIN candidates c ON c.job_id=j.id'}
  LEFT JOIN choices_v2 ch ON ch.job_id=j.id AND ch.principal_id=?
  LEFT JOIN card_applied applied ON applied.source_job_id=j.id LEFT JOIN jobs edited ON edited.id=applied.edit_job_id
  LEFT JOIN runs editedRun ON editedRun.id=edited.run_id WHERE j.run_id=?`,auth.principalId,id);
@@ -45,7 +46,9 @@ export async function readRun(env,auth,id,{statusOnly=false,compact=false,ensure
   let object=byObject.get(job.object_id);
   if(applied_run_id)object=(await appliedRuns.get(applied_run_id)).objects.find(o=>o.object_id===applied_object_id)||object;
   let reference=null;try{const diagnostics=JSON.parse(job.choice||'{}').diagnostics;reference=diagnostics?.reference_category||diagnostics?.comparison?.category;}catch{}
-  return {...safe,applied_version:job.applied_version||null,attempt_error:auth.role==='owner'?job.attempt_error:null,
+  const admission=job.status==='blocked'&&readQueueDiagnostic?await readQueueDiagnostic(env,job.id):null;
+  const publicError=job.public_error||(job.status==='blocked'?(admission?.stage==='admission_blocked'?'Нет доступного резерва для оплачиваемого запроса. Генерация не отправлена.':'Нет допуска к генерации. Проверьте доступ и актуальность задания; платный запрос не отправлен.'):null);
+  return {...safe,public_error:publicError,applied_version:job.applied_version||null,attempt_error:auth.role==='owner'?job.attempt_error:null,
    queue_diagnostic:auth.role==='owner'&&(!compact||job.status==='running')?await readQueueDiagnostic(env,job.id):null,
    reference_category:['C1','C2','C3','C4'].includes(reference)?reference:null,name:object?.name||job.object_id,
    thematic_category:object?.thematic_category||null,category:['C1','C2','C3','C4'].includes(object?.category)?object.category:null,

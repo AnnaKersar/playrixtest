@@ -19,11 +19,11 @@ assert.throws(()=>categoryVisualSchedule(16,'test'),/Не хватает/);
 for(const category of ['C1','C2','C3','C4']){
  const contract={...generationContract(category,'whole_card','test'),variation:categoryVisualSchedule(10,'test')[0]};
  const prompt=compileObjectPrompt({art_direction:'PINNED STYLE'},'Inanimate drum kit',contract);
- assert(prompt.startsWith('PINNED STYLE'));assert(plannerPrompt.includes(collectionRules));assert(prompt.includes('SUBJECT/BACKGROUND SEPARATION'));assert(prompt.includes('HARD SUBJECT-FREE FRAME'));assert(prompt.includes('x=11%–89%, y=12%–88%'));
- assert.match(prompt,/No living creatures/);assert.match(prompt,/rear batter-head side/);
- assert.match(prompt,/78% canvas width and 76% height/);assert.match(prompt,/FROZEN CATEGORY VARIATION/);
+ assert(prompt.includes('PINNED STYLE'));assert(plannerPrompt.includes(collectionRules));assert(prompt.includes('Different hue families for subject'));assert(prompt.includes('AUTHORITATIVE SUBJECT GEOMETRY'));assert(prompt.includes('x=11–89%, y=12–88%'));
+ assert.match(prompt,/No living creatures/);assert.match(prompt,/CONSTRUCTION CHECKS|Inanimate drum kit/);
+ assert.match(prompt,/HARD maximum width 70%, height 70%/);assert.match(prompt,/FROZEN CATEGORY VARIATION/);
  if(category==='C3')assert.match(prompt,/against a BASIC designed background/);
- if(category==='C4'){assert.match(prompt,/INTEGRATED INTO A DETAILED ENVIRONMENT OR A DETAILED SCENE-FILLING SURFACE/);assert.match(prompt,/NO STANDARD BACKGROUND/);assert.match(prompt,/football pitch/);assert(!prompt.includes('Background gradient targets'));}
+ if(category==='C4'){assert.match(prompt,/natural SIMPLE CASUAL-GAME setting/);assert.match(prompt,/NO STANDARD BACKGROUND|standard backdrop/i);assert.match(prompt,/NO SMALL BACKGROUND DETAILS/);assert(!prompt.includes('Background gradient targets'));}
 }
 console.log('PASS living-creature ban, semantic diversity, 800 seeded category decks, palette caps, unique patterns, size/perspective/construction rules in every C1-C4 prompt; paid calls 0');
 

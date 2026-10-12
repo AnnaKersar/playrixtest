@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';import {fixture} from './reliability-fixture.mjs';
+import {resetGuestBudget} from '../cloudflare/guest-budget-period.mjs';import {budgetState,claimPaid} from '../cloudflare/budget.mjs';
+const f=await fixture();f.db.prepare("INSERT INTO attempts(job_id,mode,status,reservation,actual,created_at,principal_id,budget_scope) VALUES('old','live','complete',10000000000,19900000000,'2020','guest:old','guests-shared-soft-v1')").run();
+assert.equal((await budgetState(f.env)).guest_remaining,0);const before=f.db.prepare('SELECT * FROM attempts').all();
+const body={requestId:'reset-user-request',limit_nanodollars:10000000000,acknowledgeNewPeriod:true};
+await assert.rejects(()=>resetGuestBudget(f.env,{role:'generator',principalId:'guest:a'},body),e=>e.status===403);
+const r=await resetGuestBudget(f.env,{role:'owner',principalId:'owner'},body);assert.equal(r.provider_calls,0);assert.deepEqual(f.db.prepare('SELECT * FROM attempts').all(),before);
+assert.equal((await budgetState(f.env)).guest_remaining,10000000000);assert.equal((await budgetState(f.env)).actual_spent,19900000000);
+const claims=await Promise.all(Array.from({length:8},(_,i)=>claimPaid(f.env,'new-'+i,2000000000,'guest:'+i)));assert.equal(claims.filter(Boolean).length,5);assert.equal((await budgetState(f.env)).guest_remaining,0);
+const retry=await resetGuestBudget(f.env,{role:'owner',principalId:'owner'},body);assert.equal(retry.period.epoch,r.period.epoch);assert.equal((await budgetState(f.env)).guest_remaining,0,'Lost reset response cannot grant another allowance');
+const second=await resetGuestBudget(f.env,{role:'owner',principalId:'owner'},{...body,requestId:'second-explicit-reset'});await resetGuestBudget(f.env,{role:'owner',principalId:'owner'},body);assert.equal(f.db.prepare('SELECT reset_id FROM guest_budget_period').get().reset_id,second.period.reset_id,'Old request cannot rewind the current period');
+assert.equal(f.db.prepare('SELECT COUNT(*) n FROM attempts').get().n,6);assert.equal((await budgetState(f.env)).active_reserved,10000000000,'Old pending project reserves are retained');
+console.log('PASS explicit owner $10 reset, preserved historical charges/holds, atomic new-period admissions and idempotent/ordered reset; provider calls 0');f.db.close();
