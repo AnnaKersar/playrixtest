@@ -1,4 +1,5 @@
 import {planRevisionBatch} from './plan-review-batch.mjs';
+import {productionQuotaIssues,productionQuotaMessage,quotaRepairInstruction} from './production-quotas.mjs';
 export function createPlanReview({approve,revise,storage=localStorage,grid=null,onPage=()=>{},pageSize=10}){
  const el=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};
  const panel=el('section');panel.id='plan-review';panel.className='plan-review plan-review-sidebar';panel.hidden=true;
@@ -11,7 +12,7 @@ export function createPlanReview({approve,revise,storage=localStorage,grid=null,
  const change=el('button','Отправить изменения'),confirm=el('button','Подтвердить и создать карточки');change.type=confirm.type='button';confirm.className='primary';change.className='plan-change';
  const note=el('p','Один текстовый запрос на все замены. Отклонённые предметы попадут в стоп-лист. Изображения начнут создаваться после подтверждения плана.'),status=el('p');status.setAttribute('role','status');panel.append(label,input,count,change,note,confirm,status);
  const cards=grid||el('div');if(!grid)panel.append(cards);
- let key='',working=false,blocked=false,selected=new Map(),objects=[],index=0,name='',active=false,detailId=null;
+ let key='',working=false,blocked=false,selected=new Map(),objects=[],index=0,name='',active=false,detailId=null,quotaIssues=[];
  const storeKey=()=> 'playrix-plan-review-draft/v1:'+key;
  const persist=()=>{try{storage.setItem(storeKey(),JSON.stringify({instruction:input.value,selected:[...selected],page:index}));}catch{}};
  const pageInfo=()=>onPage({index,pages:Math.ceil(objects.length/pageSize),count:objects.length,selected:selected.size,name,categories:[...new Set(objects.slice(index*pageSize,(index+1)*pageSize).map(o=>o.thematicCategory))]});
@@ -21,7 +22,7 @@ export function createPlanReview({approve,revise,storage=localStorage,grid=null,
  const act=async(fn)=>{if(working)return;working=true;for(const b of allButtons())b.disabled=true;status.textContent='Отправляем весь список изменений…';try{await fn();try{storage.removeItem(storeKey());}catch{}}catch(e){status.textContent=e.message;}finally{working=false;for(const b of allButtons())b.disabled=false;controls();}};
  input.oninput=()=>{persist();controls();};
  feedback.oninput=()=>{const value=selected.get(detailId);if(value){value.feedback=feedback.value;persist();}};
- repair.onclick=()=>{input.value='Исправь ошибку проверки плана. Для каждого предмета укажи 2–3 конкретные проверки конструкции: число деталей, их соединения или рабочее расположение. Сохрани предметы, категории и порядок.';persist();controls();};
+ repair.onclick=()=>{input.value=quotaIssues.length?quotaRepairInstruction(quotaIssues):'Исправь ошибку проверки плана: '+warning.textContent+' Для каждого предмета укажи 2–3 конкретные проверки конструкции: число деталей, их соединения или рабочее расположение. Сохрани предметы, категории и порядок.';persist();controls();};
  change.onclick=()=>act(()=>{const batch=planRevisionBatch(input.value,selected);return revise(batch.instruction,batch.rejectedObjectIds);});confirm.onclick=()=>act(approve);
  const render=()=>{
  if(!active)return;
@@ -39,7 +40,10 @@ export function createPlanReview({approve,revise,storage=localStorage,grid=null,
  };
  return {panel,get active(){return active;},render,turnPage(delta){if(!active||working)return;index=Math.max(0,Math.min(Math.ceil(objects.length/pageSize)-1,index+delta));render();persist();},update(pending){
  active=!!pending?.planResult&&!pending.runId&&!pending.planApproved;panel.hidden=!active;if(!active)return;
- blocked=!!pending.planValidationError;warning.hidden=repair.hidden=!blocked;warning.textContent=pending.planValidationError||'';
+ let validationError=pending.planValidationError||'';quotaIssues=[];
+ try{if(pending.draft?.collection_settings)quotaIssues=productionQuotaIssues(pending.planResult,pending.draft.collection_settings);}catch(e){validationError=validationError||e.message;}
+ if(quotaIssues.length)validationError=productionQuotaMessage(quotaIssues);
+ blocked=!!validationError;warning.hidden=repair.hidden=!blocked;warning.textContent=validationError;repair.textContent=quotaIssues.length?'Исправить распределение C1–C4':'Уточнить проверки плана';
  if(pending.planId===key){controls();return;}
  key=pending.planId;name=pending.name||'План коллекции';objects=pending.planResult.collections.flatMap(c=>(c.objects||[]).map(o=>({...o,thematicCategory:c.name})));selected=new Map();detailId=null;index=0;input.value='';status.textContent='';
  let draft={};try{draft=JSON.parse(storage.getItem(storeKey())||'{}');}catch{}
