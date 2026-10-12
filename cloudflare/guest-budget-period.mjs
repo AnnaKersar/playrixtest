@@ -1,3 +1,4 @@
+import {applyReliabilityUpgrade} from './reliability-upgrade.mjs';
 import {ownerOnly} from './roles.mjs';
 const ready=new WeakMap();
 export async function ensureGuestPeriod(env){
@@ -10,7 +11,7 @@ export async function ensureGuestPeriod(env){
 export async function resetGuestBudget(env,auth,body){
  ownerOnly(auth);
  if(body.limit_nanodollars!==10000000000||body.acknowledgeNewPeriod!==true||!/^[-a-zA-Z0-9_]{1,120}$/.test(body.requestId||''))throw Object.assign(Error('Explicit new $10 guest period acknowledgement and request ID required'),{status:400});
- await ensureGuestPeriod(env);
+ await applyReliabilityUpgrade(env);await ensureGuestPeriod(env);
  await env.DB.batch([
   env.DB.prepare('INSERT OR IGNORE INTO guest_budget_resets(request_id,epoch,principal_id,created_at,limit_nanodollars) VALUES(?,?,?,?,?)').bind(body.requestId,crypto.randomUUID(),auth.principalId,new Date().toISOString(),10000000000),
   env.DB.prepare(`INSERT INTO guest_budget_period(id,reset_id,epoch) SELECT 1,id,epoch FROM guest_budget_resets WHERE request_id=?

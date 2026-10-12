@@ -1,6 +1,6 @@
 import {Inflate} from './vendor/pako-inflate.mjs';
 // Deterministic byte/pixel/chunk bounds limit work. Elapsed checks are best-effort;
-// Workers cpu_ms is the hard runtime CPU bound (clocks may not advance within a synchronous turn).
+// The current Workers plan provides the hard runtime CPU bound (clocks may not advance within a synchronous turn).
 // Bounded PNG RGB/RGBA8 codec. Reject unsupported formats rather than silently changing alpha.
 const sig = new Uint8Array([137,80,78,71,13,10,26,10]);
 const table = Array.from({length:256},(_,n)=>{for(let k=0;k<8;k++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
