@@ -1,5 +1,5 @@
 import {ensureGuestPeriod} from './guest-budget-period.mjs';
-export const GUEST_CAP=10000000000,PROJECT_CAP=100000000000;
+export const GUEST_CAP=10000000000,PROJECT_CAP=125000000000;
 export const GUEST_SOFT_SCOPE='guests-shared-soft-v1';
 export const guestPaidEnabled=env=>env.GUEST_PAID_GENERATION_ENABLED==='true';
 // A $10 hold on unknown outcomes is an accounting policy, NOT an actual charge.
@@ -40,7 +40,7 @@ export async function claimPaid(env,jobId,reservation,principalId='owner'){
  const r=await env.DB.prepare(`INSERT OR IGNORE INTO attempts (job_id,mode,status,reservation,created_at,principal_id,budget_scope)
  SELECT ?,'live','claimed',?,?,?,CASE WHEN ?='owner' THEN 'owner' ELSE COALESCE('guests-shared-hard-v2:'||(SELECT epoch FROM guest_budget_period WHERE id=1),'guests-shared-hard-v2') END WHERE EXISTS (SELECT 1 FROM budget b WHERE b.id=1 AND b.approved=1 AND b.historical_unknown=0
  AND NOT EXISTS (SELECT 1 FROM attempts WHERE mode='live' AND (${unresolved}))
- AND b.historical_known+COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live'),0)+?<=MIN(b.ceiling,100000000000))
+ AND b.historical_known+COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live'),0)+?<=MIN(b.ceiling,${PROJECT_CAP}))
  AND (?='owner' OR (COALESCE((SELECT SUM(${charged}) FROM attempts WHERE mode='live' AND (${currentGuest})),0)+?<=${GUEST_CAP}
  AND NOT EXISTS(SELECT 1 FROM attempts WHERE mode='live' AND (${currentGuest}) AND status='cost_bound_exceeded')))` ).bind(jobId,reservation,new Date().toISOString(),principalId,scope,reservation,principalId,reservation).run();return Boolean(r.meta.changes);
 }
