@@ -19,7 +19,7 @@ export async function encodePNG(width,height,rgba) {
 export async function decodePNG(bytes) {
   const started=Date.now();if(!(bytes instanceof Uint8Array)||bytes.length<57||bytes.length>25*1024*1024 || !sig.every((n,i)=>bytes[i]===n))throw Error('Invalid PNG');
   const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);let p=8,width,height,channels,ended=false,chunks=0;const parts=[];
-  while(p+12<=bytes.length){if(++chunks>4096||Date.now()-started>1000)throw Error('PNG decode resource limit');const n=v.getUint32(p),type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(p+n+12>bytes.length)throw Error('Truncated PNG');
+  while(p+12<=bytes.length){if(++chunks>4096)throw Error('PNG chunk limit');if(Date.now()-started>1000)throw Error('PNG decode time limit');const n=v.getUint32(p),type=new TextDecoder().decode(bytes.subarray(p+4,p+8));if(p+n+12>bytes.length)throw Error('Truncated PNG');
     if(crc(bytes.subarray(p+4,p+n+8))!==v.getUint32(p+n+8))throw Error('PNG CRC');
     if(p===8&&type!=='IHDR')throw Error('PNG header');
     if(type==='IHDR'){if(width||n!==13)throw Error('PNG header');width=v.getUint32(p+8);height=v.getUint32(p+12);channels=bytes[p+17]===6?4:bytes[p+17]===2?3:0;if(!width||!height||width*height>2500000||bytes[p+16]!==8||!channels||bytes[p+18]||bytes[p+19]||bytes[p+20])throw Error('Unsupported PNG format');}

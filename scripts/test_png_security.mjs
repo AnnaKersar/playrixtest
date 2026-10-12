@@ -1,3 +1,4 @@
+import {permanentFinalizationError} from '../cloudflare/finalization-recovery.mjs';
 import assert from 'node:assert/strict';import {deflateSync} from 'node:zlib';import {performance} from 'node:perf_hooks';
 import {nativeOpaqueRGBPNG,decodePNG} from '../cloudflare/png.mjs';import {rgbPNG} from './reliability-fixture.mjs';
 const w=864,h=960,expected=h*(w*3+1),raw=new Uint8Array(expected);
@@ -9,3 +10,5 @@ const short=rgbPNG(w,h,deflateSync(new Uint8Array(100)));assert.throws(()=>nativ
 assert.throws(()=>nativeOpaqueRGBPNG(new Uint8Array(8*1024*1024+1),[w,h]),/Invalid PNG/);
 assert.throws(()=>nativeOpaqueRGBPNG(rgbPNG(10000,10000,new Uint8Array([1])),[10000,10000]),/pixel limit/);
 console.log(JSON.stringify({valid_native_rgb_ms:Math.round(elapsed*100)/100,input_limit_mb:8,pixel_limit:2500000,output_chunk_bytes:32768,png_decode_time_limit_ms:1000,checks:'CRC-correct invalid deflate, invalid filter, bomb, wrong scanline length and input bounds',paid_requests:0}));
+
+assert.equal(permanentFinalizationError(Error('PNG decode time limit')),false);assert.equal(permanentFinalizationError(Error('PNG chunk limit')),true);assert.equal(permanentFinalizationError(Error('PNG deflate: invalid block')),true);

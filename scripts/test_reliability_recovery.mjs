@@ -66,4 +66,8 @@ await check('cancelled image keeps its output and can settle verified receipt co
  await stopGeneration(f.env,{role:'owner',principalId:'owner'},{runId:f.run});const report=await reconcilePreviousAttempts(f.env,{role:'owner',principalId:'owner'});
  assert.equal(report.settled,1);assert.equal(f.db.prepare('SELECT actual FROM attempts WHERE job_id=?').get(f.id).actual,141000);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(f.id).status,'cancelled');assert(f.objects.has(f.key+'raw.png'));assert.equal(f.state.calls,1);f.db.close();
 });
+await check('PNG time budget exhaustion retries saved output without a second provider call',async()=>{
+ const f=await setup();await f.deliver(f.messages.shift());const body=f.messages.shift(),put=f.bucket.put;let injected=false;f.bucket.put=async(k,v)=>{if(k.endsWith('/final.png')&&!injected){injected=true;throw Error('PNG decode time limit');}return put(k,v);};
+ const first=await f.deliver(body);assert.equal(first.retry,1);assert.equal(first.ack,0);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(f.id).status,'running');const second=await f.deliver(body);assert.equal(second.retry,0);assert.equal(second.ack,1);assert.equal(f.db.prepare('SELECT status FROM jobs WHERE id=?').get(f.id).status,'complete');assert.equal(f.state.calls,1);assert.equal(f.db.prepare('SELECT attempts FROM finalization_jobs WHERE job_id=?').get(f.id).attempts,2);f.db.close();
+});
 console.log(JSON.stringify({checks:checks.length,paid_requests:0}));

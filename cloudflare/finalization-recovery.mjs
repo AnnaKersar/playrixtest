@@ -24,7 +24,7 @@ export async function resetFailedFinalization(env,id){
  await ensureFinalization(env);
  return env.DB.prepare("UPDATE finalization_jobs SET state='pending',attempts=0,lease_token=NULL,lease_until=0,next_retry_at=0,public_error=NULL,updated_at=? WHERE job_id=? AND state='failed'").bind(Date.now(),id).run();
 }
-export function permanentFinalizationError(error){return /PNG|dimensions|format|alpha|must be opaque|Empty foreground|Foreground includes|SHA mismatch|hash mismatch|does not match|identity mismatch|path mismatch|cost mismatch|cost conflicts|cannot be reconciled|No unique returned|Missing saved|Missing stored/i.test(error.message||'');}
+export function permanentFinalizationError(error){if(error.message==='PNG decode time limit')return false;return /PNG|dimensions|format|alpha|must be opaque|Empty foreground|Foreground includes|SHA mismatch|hash mismatch|does not match|identity mismatch|path mismatch|cost mismatch|cost conflicts|cannot be reconciled|No unique returned|Missing saved|Missing stored/i.test(error.message||'');}
 export async function failFinalization(env,lease,error){
  const permanent=permanentFinalizationError(error),terminal=permanent||lease.attempts>=FINALIZATION_MAX_ATTEMPTS;
  const message=permanent?'Сохранённый результат не прошёл проверку PNG или данных ответа. Нужна проверка; повторной оплаты не было.':terminal?'Не удалось сохранить карточку после 4 попыток. Исходник сохранён; повторной оплаты не было.':'Временная ошибка сохранения. Повторяем обработку сохранённого PNG без генерации.';
