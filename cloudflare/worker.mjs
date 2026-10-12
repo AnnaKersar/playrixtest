@@ -1,3 +1,4 @@
+import {restoreImageReceipt} from './receipt-recovery.mjs';
 import {resumeGeneration,runStopped} from './resume-generation.mjs';
 import {replacementTarget,automaticEditNote} from './card-replacement-policy.mjs';
 import {readRun,runMetadata,metadataKey} from './run-read.mjs';
@@ -392,7 +393,7 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/choices')return json(await saveChoice(env,body,auth));
           if(url.pathname==='/api/recover'){ownerOnly(auth);
             if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
-            const receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`;if(!await env.ARTIFACTS.head(receiptKey))fail(409,'No durable receipt; billing reconciliation required, no automatic resend');
+            await restoreImageReceipt(env,job,attempt);
             const processing=createProcessing(env,job,{kind:'recovery-request'});
             try{await sendFinalization(env,job,processing);}
             catch(error){
