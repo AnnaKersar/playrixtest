@@ -1,4 +1,5 @@
 import {plannerHTTPError} from './planner-http-error.mjs';
+import {validateProductionQuotas} from './visitor-public/production-quotas.mjs';
 import {loadPlannerRevision,validatePlannerRevision} from './planner-revision.mjs';
 import {validateCategoryInventory,validateNarrativeSequence,validateUniqueSubjects,validatePlannerPresentation} from './visitor-public/collection-policy.mjs';
 import {ART_DIRECTION_RULE_VERSION,artDirectionRule} from './art-direction-policy.mjs';
@@ -32,6 +33,7 @@ export function boundPlannerSchema(frozen){const schema=strictSchema(plannerSche
 export function parsePlan(payload,frozen){
  if(payload.status!=='completed')throw Error('Incomplete planner response: '+(payload.incomplete_details?.reason||payload.status||'unknown'));const content=(payload.output||[]).flatMap(o=>o.content||[]);if(content.some(c=>c.type==='refusal'))throw Error('Planner refusal');const text=content.filter(c=>c.type==='output_text').map(c=>c.text).join('');if(text.length>1000000)throw Error('Planner output too large');const plan=JSON.parse(text),ad=frozen.input.immutable_art_direction,reported={version:plan.art_direction_version??null,sha256:plan.art_direction_sha256??null};if(!ad?.version||! /^[0-9a-f]{64}$/.test(ad.sha256))throw Error('Invalid immutable Art Direction metadata');plan.art_direction_version=ad.version;plan.art_direction_sha256=ad.sha256;const schema=strictSchema(plannerSchema);if(frozen.planner_version&&frozen.planner_version!=='narrative-collection-designer/v1.5'){const item=schema.properties.collections.items.properties.objects.items;for(const k of ['display_name','subject_semantic_key','theme_facet']){delete item.properties[k];item.required=item.required.filter(x=>x!==k);}item.properties.composition_key.enum=item.properties.composition_key.enum.map(x=>x==='upright-centered'?'upright-offset':x);}validate(schema,plan);
  try{
+ if(frozen.input.preset_collections){const settings=JSON.parse(frozen.input.preset_collections);if(settings.categories)validateProductionQuotas(plan,settings);}
  if(plan.art_direction_sha256!==frozen.input.immutable_art_direction.sha256||plan.art_direction_version!==frozen.input.immutable_art_direction.version)throw Error('Art Direction changed');const objects=plan.collections.flatMap(c=>c.objects);if(!objects.length||objects.length>30||new Set(objects.map(o=>o.object_id)).size!==objects.length)throw Error('Invalid object inventory');
  if(objects.some(o=>o.production_category==='C3'&&o.asset_stage!=='object_with_surface'))throw Error('C3 requires meaningful surface');
  validateUniqueSubjects(objects);validatePlannerRevision(plan,frozen.input.revision);
