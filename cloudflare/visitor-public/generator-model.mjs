@@ -1,14 +1,9 @@
 import {validateCategoryInventory} from './collection-policy.mjs';
 import {defaults,plannerPayload,imagePayload} from './studio/flow-model.mjs';
+import {cardTypeMix,validateProductionQuotas} from './production-quotas.mjs';
+export {cardTypeMix} from './production-quotas.mjs';
 export const PAGE_SIZE=10;
 
-export function cardTypeMix(count){
- const keys=['C1','C2','C3','C4'],weights=[.3,.1,.2,.4],counts=weights.map(w=>Math.floor(w*count));
- const fractions=weights.map((w,i)=>({i,remainder:w*count-counts[i]})).sort((a,b)=>b.remainder-a.remainder||a.i-b.i);
- for(let left=count-counts.reduce((a,b)=>a+b,0),i=0;left>0;left--,i++)counts[fractions[i%4].i]++;
- if(count>=4)for(let i=0;i<4;i++)if(!counts[i]){const donor=counts.indexOf(Math.max(...counts));counts[donor]--;counts[i]++;}
- return Object.fromEntries(keys.map((key,i)=>[key,counts[i]]));
-}
 export function collectionSettings(advanced={}){
  const count=advanced.category_count===''||advanced.category_count==null?1:Number(advanced.category_count);
  if(!Number.isInteger(count)||count<1||count>30)throw Error('Количество категорий: от 1 до 30.');
@@ -31,10 +26,10 @@ export function collectionBrief(name,wishes,advanced={}){
 export function plannedCollection(draft,plan){
  const settings=draft.collection_settings||collectionSettings(),collections=plan.collections||[];
  if(collections.length!==settings.category_count)throw Error('План должен содержать '+settings.category_count+' тематических категорий.');
+ validateProductionQuotas(plan,settings);
  collections.forEach((c,i)=>{
   validateCategoryInventory(c.objects);
   if(c.objects?.length!==settings.categories[i].card_count)throw Error('В категории '+(i+1)+' должно быть '+settings.categories[i].card_count+' карточек.');
-  const actual=Object.fromEntries(['C1','C2','C3','C4'].map(t=>[t,c.objects.filter(o=>o.production_category===t).length]));if(Object.keys(actual).some(t=>actual[t]!==settings.categories[i].production_type_mix[t]))throw Error('План не соблюдает распределение C1–C4 в категории '+(i+1)+'. Генерация карточек не отправлена.');
   if(!c.name?.trim())throw Error('У категории нет названия.');
   if(settings.categories[i].name&&c.name.trim()!==settings.categories[i].name)throw Error('План изменил заданное название категории '+(i+1)+'.');
  });
