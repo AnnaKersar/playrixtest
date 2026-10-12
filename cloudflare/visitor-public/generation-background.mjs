@@ -44,6 +44,11 @@ export async function stopCurrentGeneration(){
  if(navigator.locks)await navigator.locks.request('playrix-generation-step',stop);else await stop();
 }
 export function generationProgress(){return readProgress();}
+export function recordRunRead(result){
+ const state=readGeneration(),p=state.pending,id=p?.runId||state.runId,progress=readProgress();
+ if(!id||result?.run?.id!==id||!Array.isArray(result.jobs)||!progress.message?.startsWith('Проверка временно недоступна:'))return;
+ publish({phase:p?.paused?'paused':p?'running':'idle',runId:id,message:imageProgress(result.jobs,result.jobs.length)+(p?.paused?' · Сохранённая попытка приостановлена.':'')});
+}
 export async function clearGenerationWaiting(){
  const clear=()=>{
   const state=readGeneration(),pending=state.pending;
