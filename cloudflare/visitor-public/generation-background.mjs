@@ -13,9 +13,25 @@ const pollGateKey='card-studio-generation-poll/v1',POLL_MS=10000;
 async function api(path,body){
   const response=await fetch(path,{...(body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
   const raw=await response.text();let data;try{data=JSON.parse(raw);}catch{throw Object.assign(Error('Сайт вернул не JSON · HTTP '+response.status),{status:response.status||503});}
-  if(!response.ok)throw Object.assign(Error(response.status===401||data.error==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Гость может запустить свою новую коллекцию кнопкой «ЗАПУСТИТЬ». Для просмотра прежней попытки владельца нужен вход владельца.':data.error||'HTTP '+response.status),{status:response.status,authRequired:response.status===401||data.error==='Not authorized for this resource'});
+  const accessDenied=response.status===401||response.status===403&&/^(?:Planner(?: revision| origin)? access denied|Not authorized for this resource|Войдите как владелец)/i.test(data.error||'');
+  if(!response.ok)throw Object.assign(Error(accessDenied?'Сохранённая попытка относится к другой сессии. Гость может запустить свою новую коллекцию кнопкой «ЗАПУСТИТЬ». Для просмотра прежней попытки владельца нужен вход владельца.':data.error||'HTTP '+response.status),{status:response.status,authRequired:accessDenied});
   return data;
 }
+
+export async function restoreGenerationAccess(identity){
+ const p=readGeneration().pending;
+ const denied=p?.authRequired||/^(?:Planner(?: revision| origin)? access denied|Not authorized for this resource)$/i.test(readProgress().message||'');
+ if(!p?.paused||!denied||!(p.planId||p.runId))return false;
+ if(identity.role!=='owner'&&p.principalId!==identity.principalId)return false;
+ // Verify the saved resource with GET; never submit a planner or image request here.
+ const result=await api(p.runId?'/api/run?compact=1&run='+encodeURIComponent(p.runId):'/api/planner?id='+encodeURIComponent(p.planId));
+ const patch={authRequired:false,paused:false};
+ if(!p.runId){patch.planApproved=false;if(result.result?.plan){patch.planResult=result.result.plan;patch.planValidationError=result.result.validation_error||null;}}
+ commitPending(patch,p.plannerKey);localStorage.removeItem(pollGateKey);
+ publish({phase:p.runId?'running':patch.planResult?'review':'running',runId:p.runId||null,message:patch.planResult?'Доступ восстановлен. Проверьте сохранённый план перед созданием карточек.':'Доступ восстановлен. Проверяем сохранённую попытку.'});
+ return true;
+}
+
 export async function stopCurrentGeneration(){
  const initial=readGeneration();if(initial.pending){initial.pending.paused=true;save(initial);}
  const stop=async()=>{

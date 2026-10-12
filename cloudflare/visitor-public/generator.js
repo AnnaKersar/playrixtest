@@ -2,7 +2,7 @@ import {createCardSelection} from './card-selection.mjs';
 import {queueCardChanges} from './card-batch-background.mjs';
 import {createPlanReview} from './plan-review.mjs';
 import {collectionPNG,fileName} from '/collection-download.mjs';
-import {startGeneration,startCardReplacement,approveGenerationPlan,reviseGenerationPlan,stopCurrentGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
+import {startGeneration,restoreGenerationAccess,startCardReplacement,approveGenerationPlan,reviseGenerationPlan,stopCurrentGeneration,clearGenerationWaiting,readGeneration,generationProgress} from './generation-background.mjs?v=quality-v1-20261010';
 import {cardActions} from './card-actions.mjs';
 import {plannerStopped,plannerProgress,imageProgress} from './generation-progress.mjs';
 import {PAGE_SIZE,collectionSettings,collectionBrief,plannedCollection,plannerPayload,imagePayload,categoryFor,blindComparison} from './generator-model.mjs?v=quality-v1';
@@ -55,8 +55,8 @@ function updateGenerationUI(){
   planDownload.hidden=!saved.pending?.planId;planDownload.style.display=saved.pending?.planId?'':'none';if(saved.pending?.planId)planDownload.href='/api/planner?id='+encodeURIComponent(saved.pending.planId);
   stopButton.hidden=!(saved.pending||jobs.some(j=>!['complete','cancelled'].includes(j.status)));clearWaiting.hidden=!saved.pending;clearWaiting.style.display=saved.pending?'':'none';
   $('launch').disabled=busy||!generationAccess;$('collection-name').disabled=busy;$('producer-wishes').disabled=busy;
-  if(progress.message)text('launch-status',progress.message==='Часть карточек требует проверки. Откройте «Тест».'?'Создание карточек остановилось. Подробности — в диагностике и истории генераций.':progress.message==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Нажмите «ЗАПУСТИТЬ», чтобы создать новую коллекцию в текущей сессии. Прежняя попытка сохранится в истории.':progress.message);
- const ownerLink=document.querySelector('.owner-link');if(ownerLink){const needsLogin=!!saved.pending?.authRequired||progress.message==='Not authorized for this resource';ownerLink.textContent=needsLogin?'Войти и продолжить сохранённую попытку':'Вход владельца';ownerLink.classList.toggle('action',needsLogin);}
+  if(progress.message)text('launch-status',/^(?:Planner(?: revision| origin)? access denied)$/i.test(progress.message)?'Сессия владельца истекла. Войдите, чтобы продолжить сохранённый план. Гость может создать свою новую коллекцию.':progress.message==='Часть карточек требует проверки. Откройте «Тест».'?'Создание карточек остановилось. Подробности — в диагностике и истории генераций.':progress.message==='Not authorized for this resource'?'Сохранённая попытка относится к другой сессии. Нажмите «ЗАПУСТИТЬ», чтобы создать новую коллекцию в текущей сессии. Прежняя попытка сохранится в истории.':progress.message);
+ const ownerLink=document.querySelector('.owner-link');if(ownerLink){const needsLogin=!!saved.pending?.authRequired||/^(?:Planner(?: revision| origin)? access denied|Not authorized for this resource)$/i.test(progress.message||'');ownerLink.textContent=needsLogin?'Войти и продолжить сохранённую попытку':'Вход владельца';ownerLink.classList.toggle('action',needsLogin);}
   const id=saved.pending?.runId||saved.runId;
   if(id&&!refreshingRun&&!planReview.active){refreshingRun=true;loadRun(id).catch(e=>text('collection-status',e.message)).finally(()=>refreshingRun=false);}
 }
@@ -79,7 +79,7 @@ async function refreshReadiness({resume=false}={}){
  let response=await fetch('/api/preflight');
  if(response.status===401){await api('/api/guest/session',{});response=await fetch('/api/preflight');}
  if(!response.ok){generationAccess=false;$('launch').disabled=true;throw Error('Не удалось подключить генератор. Попробуйте обновить страницу.');}
- const state=await response.json();document.getElementById('guest-budget').hidden=state.role==='owner';
+ const state=await response.json();if(await restoreGenerationAccess(state))updateGenerationUI();document.getElementById('guest-budget').hidden=state.role==='owner';
  const reasons=[...(state.missing||[]),...(state.live_missing||[]),...(state.planner?.missing||[]),...(state.budget?.live_blockers||[]).filter(reason=>!resume||reason!=='attempt_billing_reconciliation_required')];
  if(!state.live_enabled)reasons.push('Генерация недоступна');if(!state.planner?.live||state.planner?.ready===false)reasons.push('Подготовка коллекции недоступна');
  ready=reasons.length===0;generationAccess=state.role==='owner'||ready;$('launch').disabled=busy||!generationAccess;
