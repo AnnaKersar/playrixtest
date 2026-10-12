@@ -28,7 +28,7 @@ export async function restoreGenerationAccess(identity){
  const patch={authRequired:false,paused:false};
  if(!p.runId){patch.planApproved=false;if(result.result?.plan){patch.planResult=result.result.plan;patch.planValidationError=result.result.validation_error||null;}}
  commitPending(patch,p.plannerKey);localStorage.removeItem(pollGateKey);
- publish({phase:p.runId?'running':patch.planResult?'review':'running',runId:p.runId||null,message:patch.planResult?'Доступ восстановлен. Проверьте сохранённый план перед созданием карточек.':'Доступ восстановлен. Проверяем сохранённую попытку.'});
+ publish({phase:'running',runId:p.runId||null,message:patch.planResult?'Доступ восстановлен. Продолжаем создание карточек по проверенному плану.':'Доступ восстановлен. Проверяем сохранённую попытку.'});
  return true;
 }
 
@@ -95,9 +95,9 @@ export async function startGeneration(name,wishes,advanced={}){
   tick();
 }
 
+function acceptGenerationPlan(){const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');if(p.planValidationError)throw Error(p.planValidationError+' Сначала уточните текстовый план.');plannedCollection(p.draft,p.planResult);if(p.replacement){const objects=p.planResult.collections.flatMap(c=>c.objects);for(const id of p.replacement.objectIds){if(!p.replacement.sourceJobs[id]||!objects.some(o=>o.object_id===id))throw Error('У выбранного предмета нет готовой исходной карточки.');}queueCardChanges(p.replacement.objectIds.map(id=>({kind:'replace',sourceJobId:p.replacement.sourceJobs[id],planId:p.planId,name:objects.find(o=>o.object_id===id)?.display_name})));s.pending=null;save(s);publish({phase:'idle',runId:s.runId,message:'Замены отправлены. Новые версии появятся в редакторе; примените их после проверки.'});return;}p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});}
 export async function approveGenerationPlan(){
- const approve=()=>{const s=readGeneration(),p=s.pending;if(!p?.planResult||p.runId||p.paused)throw Error('Нет готового плана для подтверждения.');if(p.planValidationError)throw Error(p.planValidationError+' Сначала уточните текстовый план.');plannedCollection(p.draft,p.planResult);if(p.replacement){const objects=p.planResult.collections.flatMap(c=>c.objects);for(const id of p.replacement.objectIds){if(!p.replacement.sourceJobs[id]||!objects.some(o=>o.object_id===id))throw Error('У выбранного предмета нет готовой исходной карточки.');}queueCardChanges(p.replacement.objectIds.map(id=>({kind:'replace',sourceJobId:p.replacement.sourceJobs[id],planId:p.planId,name:objects.find(o=>o.object_id===id)?.display_name})));s.pending=null;save(s);publish({phase:'idle',runId:s.runId,message:'Замены отправлены. Новые версии появятся в редакторе; примените их после проверки.'});return;}p.planApproved=true;save(s);localStorage.removeItem(pollGateKey);publish({phase:'running',message:'План подтверждён. Начинаем создание карточек.'});};
- if(navigator.locks)await navigator.locks.request('playrix-generation-step',approve);else approve();tick();
+ if(navigator.locks)await navigator.locks.request('playrix-generation-step',acceptGenerationPlan);else acceptGenerationPlan();tick();
 }
 export async function reviseGenerationPlan(instruction,rejectedObjectIds=[]){
  instruction=String(instruction||'').trim();if((!instruction&&!rejectedObjectIds.length)||instruction.length>4000)throw Error('Опишите изменения: до 4000 символов.');
@@ -145,8 +145,11 @@ async function step(){
       publish({phase:'running',message:plannerProgress(plan,Date.now()-p.startedAt)});
       if(plan.result?.validation_error&&!plan.result?.plan)throw Object.assign(Error('План не прошёл проверку: '+plan.result.validation_error),{terminal:true});
       if(plan.result?.plan){
-        if(!p.planResult){commitPending({planResult:plan.result.plan,planApproved:false,planValidationError:plan.result.validation_error||null},p.plannerKey);publish({phase:'review',message:'План готов. Проверьте темы и предметы перед созданием карточек.'});return;}
-        if(!p.planApproved){publish({phase:'review',message:'План готов. Можно изменить его текстом или подтвердить генерацию карточек.'});return;}
+        const validationError=p.planValidationError||plan.result.validation_error;
+        if(validationError)throw Object.assign(Error('План не прошёл проверку: '+validationError),{terminal:true});
+        if(!p.planResult)commitPending({planResult:plan.result.plan,planApproved:false,planValidationError:null},p.plannerKey);
+        try{acceptGenerationPlan();}catch(error){throw Object.assign(error,{terminal:true});}
+        if(p.replacement)return;
         let approved;try{approved=plannedCollection(draft,plan.result.plan);}catch(error){throw Object.assign(error,{terminal:true});}
         publish({phase:'running',message:'План готов · '+plan.result.plan.collections.map(c=>c.name).join(' / ')+' · передаём карточки в очередь'});
         const response=await api('/api/runs',{...imagePayload(approved),requestId:p.runKey,planner_request_id:p.planId,mode:'live',approval:'I approve one paid attempt per object'});
@@ -183,7 +186,7 @@ async function tick(){
   if(ticking)return;ticking=true;
   try{
     const check=async()=>{
-      const state=readGeneration();if(!state.pending||state.pending.paused||state.pending.planResult&&!state.pending.planApproved&&!state.pending.runId)return;
+      const state=readGeneration();if(!state.pending||state.pending.paused)return;
       let gate={};try{gate=JSON.parse(localStorage.getItem(pollGateKey)||'{}');}catch{}
       const now=Date.now();if(gate.key===state.pending.plannerKey&&now-gate.at<POLL_MS)return;
       localStorage.setItem(pollGateKey,JSON.stringify({key:state.pending.plannerKey,at:now}));

@@ -35,11 +35,9 @@ c.context.fetch=async(url,options)=>{
  assert.equal(runPosts,1,'No missing-run lookup before creating the run');return new Response(JSON.stringify({jobs:[]}));
 };
 const ready=JSON.parse(store.get(key));ready.pending.paused=false;store.set(key,JSON.stringify(ready));now+=20000;
-await vm.runInContext('tick()',c.context);assert.equal(runPosts,0);assert.equal(planGets,1);assert.equal(JSON.parse(store.get(key)).pending.planApproved,false);
-now+=20000;await vm.runInContext('tick()',c.context);assert.equal(runPosts,0);assert.equal(planGets,1,'Reviewing the saved plan does not poll or send images');
-await vm.runInContext('approveGenerationPlan()',c.context);await new Promise(resolve=>setImmediate(resolve));assert.equal(runPosts,1);assert.equal(JSON.parse(store.get(key)).pending.runId,'run_q');
+await vm.runInContext('tick()',c.context);assert.equal(runPosts,1);assert.equal(planGets,1);assert.equal(JSON.parse(store.get(key)).pending.planApproved,true);assert.equal(JSON.parse(store.get(key)).pending.runId,'run_q');
 now+=20000;await vm.runInContext('tick()',c.context);assert.equal(runPosts,1);assert.equal(planGets,1);
-console.log('PASS completed plan waits for explicit approval, then one stable-id run submission; no images while reviewing, simulated network only');
+console.log('PASS valid plan automatically submits one stable-id run without a review or confirmation step; simulated network only');
 const reviewPlan={collections:[{name:'Jazz',objects:[{object_id:'card-a',main_identity:'Radio'}]}]};
 store.set(key,JSON.stringify({pending:{plannerKey:'review-key',runKey:'review-run',planId:'planner_review',planResult:reviewPlan,planApproved:false,name:'Music',wishes:'',draft:{card_count:1,collection_settings:{categories:[{name:'Jazz'}]},preset_collections:JSON.stringify({categories:[{name:'Jazz'}]})}}}));
 c.context.crypto=webcrypto;c.context.TextEncoder=TextEncoder;c.context.structuredClone=structuredClone;c.context.plannerPayload=d=>d;
@@ -52,3 +50,8 @@ const invalid=JSON.parse(store.get(key));invalid.pending.planResult=reviewPlan;i
 await assert.rejects(()=>vm.runInContext('approveGenerationPlan()',c.context),e=>e.message.includes('Сначала уточните текстовый план'));
 assert.equal(JSON.parse(store.get(key)).pending.planApproved,false);assert.equal(runPosts,1);console.log('PASS invalid construction draft cannot be approved or send images.');
 
+
+now+=20000;await vm.runInContext('tick()',c.context);assert.equal(JSON.parse(store.get(key)).pending.paused,true);assert.equal(runPosts,1);console.log('PASS invalid saved plan stops before automatic image submission');
+const replacementPlan={collections:[{name:'Jazz',objects:[{object_id:'card-a',display_name:'Radio'}]}]};
+store.set(key,JSON.stringify({runId:'source-run',pending:{plannerKey:'replace',runKey:'replace-run',planId:'planner_replace',expectedPlanId:'planner_replace',expectedRunId:'run_replace',planResult:replacementPlan,draft:{card_count:1},replacement:{objectIds:['card-a'],sourceJobs:{'card-a':'source-job'}}}}));let changes=0;c.context.queueCardChanges=items=>{changes++;assert.equal(items[0].sourceJobId,'source-job');};c.context.plannedCollection=()=>({approved:true});now+=20000;await vm.runInContext('tick()',c.context);assert.equal(changes,1);assert.equal(JSON.parse(store.get(key)).pending,null);now+=20000;await vm.runInContext('tick()',c.context);assert.equal(changes,1);assert.equal(runPosts,1);console.log('PASS ready replacement goes directly to one correction batch without textual re-selection');
+const ui=await readFile('cloudflare/visitor-public/generator.js','utf8');assert(!ui.includes('createPlanReview'));assert(ui.includes('createCardSelection'));assert(ui.includes('card-editor.html'));
