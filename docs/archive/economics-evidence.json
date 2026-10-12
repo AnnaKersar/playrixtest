@@ -1,11 +1,19 @@
 {
   "schema": "playrix-economics/v1",
   "direct_spend": {
-    "usd": 140,
+    "usd": 180,
     "chatgpt_usd": 80,
-    "api_and_cloudflare_combined_usd": 60,
     "type": "user_reported_approximate",
-    "no_additional_ledger_sum": true
+    "no_additional_ledger_sum": true,
+    "api_tokens_usd": 100,
+    "clarified_on": "2026-10-12",
+    "previous_report": {
+      "usd": 140,
+      "chatgpt_usd": 80,
+      "api_and_cloudflare_combined_usd": 60
+    },
+    "cloudflare_historical_separate_usd": null,
+    "clarification": "User clarified tokens/API as $100, with ChatGPT $80 separate. Previous $60 bundled API and Cloudflare; no independently known Cloudflare breakdown is added again."
   },
   "labor": {
     "annual_gross_usd": 140000,
@@ -109,7 +117,7 @@
     "hosting": {
       "usd_per_project_month": 5,
       "default_months": 1,
-      "scope": "Future Workers Paid minimum, once per project period; historical Cloudflare already included in prototype; overages unknown and excluded",
+      "scope": "Future Workers Paid minimum, once per project period; previous historical $60 bundled API and Cloudflare, unknown separate historical Cloudflare amount is not added again; overages unknown and excluded",
       "source": "https://developers.cloudflare.com/workers/platform/pricing/"
     },
     "artist_software": {

@@ -1,5 +1,5 @@
 export const TARGETS=[10,30,100,300,1000,10000];
-export const CASH=140;
+export const CASH=180;
 export const PRODUCER_LABOR=40*(140000/2080);
 export const FIXED=CASH+PRODUCER_LABOR;
 export const artistRate=salary=>salary*1.1206/2080;
@@ -52,7 +52,7 @@ if(typeof document!=='undefined'){
    cells.forEach((c,i)=>{const td=tr.insertCell();td.dataset.label=headers[i+1]+(c.basis?' · '+c.basis:'');const strong=document.createElement('strong');strong.textContent=c.value;td.append(strong);if(c.sub){const small=document.createElement('small');small.textContent=c.sub;if(c.difference!==undefined)small.className=c.difference>=0?'positive':'negative';td.append(small);}if(c.time){const time=document.createElement('small');time.textContent=c.time;td.append(time);}});
   }
   el('comparison-table').replaceChildren(table);
-  el('break-even').replaceChildren(...GRADES.map(g=>{const b=breakEven(g.salary,input),cash=breakEven(g.salary,input,CASH),p=document.createElement('p'),strong=document.createElement('strong');p.append('Против '+g.label);strong.textContent=b.collections===null?'Не окупается':fmt(b.collections,0)+' карточек';p.append(strong);const small=document.createElement('small');small.textContent=b.cards===null?'Новые расходы не ниже ручных.':'С оценкой труда; точный порог — '+fmt(b.cards,0)+'.';p.append(small);const cashLine=document.createElement('small');cashLine.className='economics-cash-break-even';cashLine.textContent=cash.cards===null?'Только $140 сервисов: не окупается.':'Только $140 сервисов: '+fmt(cash.collections,0)+' карт (точно '+fmt(cash.cards,0)+').';p.append(cashLine);return p;}));
+  el('break-even').replaceChildren(...GRADES.map(g=>{const b=breakEven(g.salary,input),cash=breakEven(g.salary,input,CASH),p=document.createElement('p'),strong=document.createElement('strong');p.append('Против '+g.label);strong.textContent=b.collections===null?'Не окупается':fmt(b.collections,0)+' карточек';p.append(strong);const small=document.createElement('small');small.textContent=b.cards===null?'Новые расходы не ниже ручных.':'С оценкой труда; точный порог — '+fmt(b.cards,0)+'.';p.append(small);const cashLine=document.createElement('small');cashLine.className='economics-cash-break-even';cashLine.textContent=cash.cards===null?'Только $180 сервисов: не окупается.':'Только $180 сервисов: '+fmt(cash.collections,0)+' карт (точно '+fmt(cash.cards,0)+').';p.append(cashLine);return p;}));
  }
  document.querySelectorAll('#attempt-cost,#yield,#brief-minutes,#gd-salary,#hosting-months,#junior-hours,#middle-hours,#senior-hours').forEach(input=>input.addEventListener('input',render));render();
 }
