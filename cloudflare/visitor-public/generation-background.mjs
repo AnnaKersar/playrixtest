@@ -32,6 +32,20 @@ export async function restoreGenerationAccess(identity){
  return true;
 }
 
+
+export async function resumeStoppedCollection(runId,count=30){
+ const resume=async()=>{
+  const s=readGeneration();if(s.pending&&!s.pending.paused)throw Error('Сначала остановите текущую генерацию.');
+  if(s.pending)s.detached_attempts=[...(s.detached_attempts||[]),{...s.pending,detachedAt:Date.now(),reason:'resume-existing-collection'}];
+  s.runId=runId;s.pending={plannerKey:'resume-'+runId,runKey:'resume-'+runId,runId,paused:true,startedAt:Date.now(),draft:{card_count:count}};save(s);
+  const result=await api('/api/resume-generation',{runId});
+  commitPending({paused:false,resumeQueuePending:!!result.queue_pending},'resume-'+runId);localStorage.removeItem(pollGateKey);
+  publish({phase:'running',runId,message:'Продолжаем сохранённую коллекцию. Готовые карточки сохранены.'});
+  return result;
+ };
+ const result=navigator.locks?await navigator.locks.request('playrix-generation-step',resume):await resume();void tick();return result;
+}
+
 export async function stopCurrentGeneration(){
  const initial=readGeneration();if(initial.pending){initial.pending.paused=true;save(initial);}
  const stop=async()=>{
@@ -146,6 +160,7 @@ async function step(){
       if(plannerStopped.has(plan.status)||plannerStopped.has(plan.stage))throw Object.assign(Error('План остановлен: '+(plan.result?.provider_error?.message||plan.error||plan.stage||plan.status)),{terminal:true,providerRejected:!!plan.result?.provider_error});
       return;
     }
+    if(p.resumeQueuePending){const dispatch=await api('/api/resume-generation',{runId:p.runId});commitPending({resumeQueuePending:!!dispatch.queue_pending},p.plannerKey);}
     const result=await api('/api/run?status=1&run='+encodeURIComponent(p.runId));
     const jobs=result.jobs||[];
     if(jobs.length&&jobs.every(job=>job.status==='complete')){

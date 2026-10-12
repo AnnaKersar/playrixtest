@@ -1,3 +1,4 @@
+import {resumeGeneration,runStopped} from './resume-generation.mjs';
 import {replacementTarget,automaticEditNote} from './card-replacement-policy.mjs';
 import {readRun,runMetadata,metadataKey} from './run-read.mjs';
 import {stopGeneration} from './stop-generation.mjs';
@@ -48,7 +49,7 @@ async function accountingEvidence(env,attempt){
   return evidence;
 }
 async function readiness(env){const missing=['DB','ARTIFACTS','IMAGE_JOBS','ASSETS'].filter(k=>!env[k]);let schema=false;if(env.DB)try{schema=(await one(env,'SELECT version FROM schema_version WHERE version=3'))?.version===3;}catch{}if(!schema)missing.push('schema.sql migration');let journalReady=false;if(env.DB)try{journalReady=!!await one(env,'SELECT version FROM schema_version WHERE version=5');}catch{}return {version:'cloud-worker/v1',missing,journal_ready:journalReady,mock_ready:missing.length===0,review_ready:missing.filter(k=>k!=='IMAGE_JOBS').length===0,live_enabled:env.LIVE_GENERATION_ENABLED==='true',live_missing:[...missing,...(!journalReady?['experiment journal migration']:[]),...(!env.OPENAI_API_KEY?['OPENAI_API_KEY Secret']:[]),...(!env.REFERENCE_MANIFEST_KEY||!env.APPROVED_REFERENCE_MANIFEST_SHA256?['pinned reference manifest']:[]),...(!env.APPROVED_ART_DIRECTION_SHA256?['pinned Art Direction']:[])],budget:env.DB&&schema?await budgetState(env):null,planner:{version:PLANNER_VERSION,live:env.LIVE_PLANNER_ENABLED==='true',...plannerConfiguration(env)},editor:(env.EDITOR_MANIFEST_KEY&&env.EDITOR_MANIFEST_SHA256)||(env.ARTIFACTS&&await env.ARTIFACTS.get('private-editor/active.json'))?'private-package-configured':'not-provisioned',billing:'Mock has no provider charges; infrastructure usage may be billed.'};}
-async function requireReady(env,pathname){const state=await readiness(env);const queuePaths=new Set(['/api/runs','/api/requeue-run','/api/dispatch','/api/recover','/api/plan-live','/api/planner-recover','/api/card-edit']);const missing=state.missing.filter(k=>k!=='IMAGE_JOBS'||queuePaths.has(pathname));if(queuePaths.has(pathname)&&!state.journal_ready)missing.push('experiment journal migration');if(missing.length)fail(503,'Missing: '+missing.join(', '));}
+async function requireReady(env,pathname){const state=await readiness(env);const queuePaths=new Set(['/api/runs','/api/requeue-run','/api/resume-generation','/api/dispatch','/api/recover','/api/plan-live','/api/planner-recover','/api/card-edit']);const missing=state.missing.filter(k=>k!=='IMAGE_JOBS'||queuePaths.has(pathname));if(queuePaths.has(pathname)&&!state.journal_ready)missing.push('experiment journal migration');if(missing.length)fail(503,'Missing: '+missing.join(', '));}
 async function queueDiagnostic(env,jobId,stage,detail={}){const safe={stage,at:new Date().toISOString(),...detail};if(safe.error)safe.error=String(safe.error).split(env.OPENAI_API_KEY||'__NO_KEY__').join('[redacted]').slice(0,500);try{await putJSON(env,'queue-diagnostics/'+jobId+'.json',safe);}catch{console.error(JSON.stringify({event:'queue-diagnostic-write-failed',job_id:jobId,stage}));}}
 async function readQueueDiagnostic(env,jobId){try{const o=await env.ARTIFACTS.get('queue-diagnostics/'+jobId+'.json');return o?processingHealth(await o.json()):null;}catch{return {stage:'diagnostic_unavailable'};}}
 async function references(env,{manifestOnly=false}={}){
@@ -176,9 +177,10 @@ async function sendFinalization(env,job,processing){
 export async function processJob(env,jobId,deps={}){
   const job=await one(env,'SELECT * FROM jobs WHERE id=?',jobId);if(!job)return;
   const processing=deps.processing||createProcessing(env,job);await processing.event('queue_receive','succeeded');
-  if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json')){await processing.event('run_cancelled','succeeded',{},'skipped');return;}
+  if(await runStopped(env,job.run_id)){await processing.event('run_cancelled','succeeded',{},'skipped');return;}
   const previous=await one(env,'SELECT * FROM attempts WHERE job_id=?',jobId);if(previous){await processing.event('replay_prevented','succeeded',{},'skipped');return;} // all ambiguous attempts are permanently non-replayable
   const run=await one(env,'SELECT * FROM runs WHERE id=?',job.run_id),frozenObject=await env.ARTIFACTS.get(run.frozen_key);if(!frozenObject)throw Error('Missing frozen run');const text=await frozenObject.text();if(await sha(text)!==run.frozen_sha)throw Error('Frozen SHA mismatch');const frozen=JSON.parse(text),object=frozen.objects.find(o=>o.object_id===job.object_id);if(!object)throw Error('Missing frozen object');
+  const resumed=await env.ARTIFACTS.get('runs/'+job.run_id+'/resume-input/'+job.object_id+'.json');if(resumed){const revision=await resumed.json();if(revision.source_frozen_sha256!==run.frozen_sha||await sha(revision.prompt)!==revision.prompt_sha256)throw Error('Resume input SHA mismatch');object.prompt=revision.prompt;object.resume_revision={prompt_sha256:revision.prompt_sha256,policy_version:revision.policy_version};}
   await processing.event('checking_frozen_input','succeeded');
   if(run.mode==='live'&&object.generation?.mode!=='whole_card'){
     await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();
@@ -195,14 +197,14 @@ export async function processJob(env,jobId,deps={}){
   }
   let sourceImage=null;if(object.correction){sourceImage=await processing.stage('read_edit_source',async()=>{const value=await env.ARTIFACTS.get(object.correction.source_key);if(!value)throw Error('Missing edit source');const bytes=new Uint8Array(await value.arrayBuffer());if(await sha(bytes)!==object.correction.source_sha256)throw Error('Edit source SHA mismatch');return bytes;});}
   const sheetHashes=[];await processing.stage('reference_hashes',async()=>{sheetHashes.push(...validatedHashes);});
-  await processing.stage('journal_prepare',async()=>journalPrepare(env,job.id,{version:'experiment-input/v1',kind:'image',attempt_id:job.id,run_id:job.run_id,principal_id:run.principal_id,mode:run.mode,provider:run.mode==='mock'?'local-mock':'openai',model:frozen.model,provider_version:frozen.provider_version,prompt:object.prompt,prompt_sha256:await sha(object.prompt),parameters:{...(object.correction?{correction:object.correction}:{}),n:1,size:frozen.native,quality:frozen.quality,background:object.generation?.background||frozen.background,generation_mode:object.generation?.mode||'legacy',shadow_mode:object.generation?.shadow_mode||null,surface_mode:object.generation?.surface_mode||null,surface_finish:object.generation?.surface_finish||null,output_format:'png'},references:{manifest_sha256:frozen.reference_manifest_sha,art_direction_sha256:frozen.art_direction_sha,art_direction_rule_version:frozen.art_direction_rule_version||null,art_direction_rule_sha256:frozen.art_direction_rule_sha256||null,sheet_sha256:sheetHashes},experiment:frozen.experiment||experimentContext(),retry_policy:'one-provider-send; replay forbidden after claim',reservation_nanodollars:frozen.reservation||0,cost_basis:'usage-calculated estimate, not invoice',price_table_nanodollars_per_token:{text_input:5000,image_input:8000,image_output:30000,verification:'existing-code-table; not independently reverified for live admission'},public:false}));
-  if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json'))return;
+  await processing.stage('journal_prepare',async()=>journalPrepare(env,job.id,{version:'experiment-input/v1',kind:'image',attempt_id:job.id,run_id:job.run_id,principal_id:run.principal_id,mode:run.mode,provider:run.mode==='mock'?'local-mock':'openai',model:frozen.model,provider_version:frozen.provider_version,prompt:object.prompt,prompt_sha256:await sha(object.prompt),parameters:{...(object.resume_revision?{resume_revision:object.resume_revision}:{}),...(object.correction?{correction:object.correction}:{}),n:1,size:frozen.native,quality:frozen.quality,background:object.generation?.background||frozen.background,generation_mode:object.generation?.mode||'legacy',shadow_mode:object.generation?.shadow_mode||null,surface_mode:object.generation?.surface_mode||null,surface_finish:object.generation?.surface_finish||null,output_format:'png'},references:{manifest_sha256:frozen.reference_manifest_sha,art_direction_sha256:frozen.art_direction_sha,art_direction_rule_version:frozen.art_direction_rule_version||null,art_direction_rule_sha256:frozen.art_direction_rule_sha256||null,sheet_sha256:sheetHashes},experiment:frozen.experiment||experimentContext(),retry_policy:'one-provider-send; replay forbidden after claim',reservation_nanodollars:frozen.reservation||0,cost_basis:'usage-calculated estimate, not invoice',price_table_nanodollars_per_token:{text_input:5000,image_input:8000,image_output:30000,verification:'existing-code-table; not independently reverified for live admission'},public:false}));
+  if(await runStopped(env,job.run_id))return;
   const reserve=run.mode==='live'?(frozen.reservation||reservationFor(env,'image',run.principal_id)):0;
   const claimed=run.mode==='live'?await claimPaid(env,job.id,reserve,run.principal_id):Boolean((await query(env,"INSERT OR IGNORE INTO attempts (job_id,mode,status,reservation,created_at,principal_id,budget_scope) VALUES (?,'mock','claimed',0,?,?,'owner')",job.id,new Date().toISOString(),run.principal_id).run()).meta.changes);
   if(!claimed){await processing.event('admission_blocked','succeeded',{},'skipped');await query(env,"UPDATE jobs SET status='blocked' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();return;}
   let invoked=false;const started=Date.now();
   try{
-    if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json')){await query(env,"UPDATE attempts SET status='complete',actual=0 WHERE job_id=? AND status='claimed' AND receipt_key IS NULL",job.id).run();return;}
+    if(await runStopped(env,job.run_id)){await query(env,"UPDATE attempts SET status='complete',actual=0 WHERE job_id=? AND status='claimed' AND receipt_key IS NULL",job.id).run();return;}
     await query(env,"UPDATE jobs SET status='running' WHERE id=?",job.id).run();await processing.event('provider_starting','started');
     await processing.journal('provider-started','provider_started',{started_at:new Date(started).toISOString(),mode:run.mode});invoked=true;
     const answer=await processing.stage('provider_response',async()=>run.mode==='mock'?{png:await contractMockPNG(object.generation,frozen.native),usage:null,requestId:null}:await (deps.provider||imageRequest)(env,object.prompt,sheets,undefined,{background:object.generation?.background||frozen.background,size:frozen.native.join('x'),sourceImage,stage:(...args)=>processing.stage(...args)}),{},answer=>({output_bytes:answer.png.length}));
@@ -293,11 +295,28 @@ export function createWorker(deps={}){return {
         return json({...created,jobId:editJob,source_job_id:job.id,stage:'subject-replacement'},202);
       }
 
+
+      if(url.pathname==='/api/resume-generation'&&request.method==='POST'){
+        const body=await bodyJSON(request);
+        return json(await resumeGeneration(env,auth,body.runId,{prepare:async job=>{
+          if(await one(env,'SELECT attempt_id FROM experiment_journal WHERE attempt_id=?',job.id))return;
+          const run=await one(env,'SELECT * FROM runs WHERE id=?',job.run_id),frozen=await getJSON(env,run.frozen_key),object=frozen.objects.find(o=>o.object_id===job.object_id);
+          if(object.correction||object.generation?.mode!=='whole_card')return;
+          const brief=object.prompt.split('\nOBJECT\n')[1]?.split('\nOUTPUT CONTRACT')[0];if(!brief)return;
+          resumeReferences||=(await references(env,{manifestOnly:true})).manifest;const prompt=compileObjectPrompt(resumeReferences,brief,object.generation);
+          await putJSON(env,'runs/'+job.run_id+'/resume-input/'+job.object_id+'.json',{prompt,prompt_sha256:await sha(prompt),source_frozen_sha256:run.frozen_sha,policy_version:ART_DIRECTION_RULE_VERSION});
+        },dispatch:async()=>{
+          await dispatch(env);
+          const rows=await all(env,"SELECT o.job_id FROM outbox o JOIN jobs j ON j.id=o.job_id WHERE o.state='recovery_pending' AND j.run_id=?",body.runId);
+          for(const row of rows){await (env.FINAL_JOBS||env.IMAGE_JOBS).send({version:1,kind:'image-recovery',jobId:row.job_id});await query(env,"UPDATE outbox SET state='recovery_sent' WHERE job_id=? AND state='recovery_pending'",row.job_id).run();}
+        }}),202);
+      }
+
       if(url.pathname==='/api/card-edit'&&request.method==='POST'){
         ownerOnly(auth);const b=await bodyJSON(request);b.note=automaticEditNote(b.note);if(!safeId(b.jobId))fail(400,'Invalid job');await jobAccess(env,auth,b.jobId);
         const job=await one(env,'SELECT * FROM jobs WHERE id=?',b.jobId),receiptKey='runs/'+job.run_id+'/'+job.object_id+'/receipt.json';
         const stage=correctionStage(job,!!await env.ARTIFACTS.head(receiptKey));
-        if(stage==='finalization'){if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json'))fail(409,'Коллекция отменена; восстановление не запускается.');const processing=createProcessing(env,job,{kind:'card-editor-finalization'});await sendFinalization(env,job,processing);return json({stage,jobId:job.id,runId:job.run_id,provider_calls:0},202);}
+        if(stage==='finalization'){if(await runStopped(env,job.run_id))fail(409,'Коллекция отменена; восстановление не запускается.');const processing=createProcessing(env,job,{kind:'card-editor-finalization'});await sendFinalization(env,job,processing);return json({stage,jobId:job.id,runId:job.run_id,provider_calls:0},202);}
         if(stage!=='image-edit')fail(409,'Нет готовой карточки или сохранённого ответа; повторная отправка запрещена.');
         if(b.approval!=='I approve one paid card edit'||!safeId(b.requestId))fail(400,'Explicit one-edit approval and requestId required');
         await ensureCardEdits(env);const applied=(await one(env,'SELECT edit_job_id FROM card_applied WHERE source_job_id=?',job.id))?.edit_job_id||job.id,sourceJob=await one(env,'SELECT * FROM jobs WHERE id=?',applied),source=await one(env,'SELECT * FROM results WHERE job_id=?',applied),manifest=await getJSON(env,source.manifest_key),run=await one(env,'SELECT * FROM runs WHERE id=?',sourceJob.run_id),frozen=await getJSON(env,run.frozen_key),object=frozen.objects.find(o=>o.object_id===sourceJob.object_id);
@@ -367,12 +386,12 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/planner-recover'){ownerOnly(auth);if(!safeId(body.requestId))fail(400,'Invalid planner ID');return json(await recoverPlan(env,body.requestId));}
           if(url.pathname==='/api/plan-mock'){generationRole(auth);return json(await planMock(body));}
           if(url.pathname==='/api/runs'){if(auth.role==='owner')await reconcilePreviousAttempts(env,auth);return json(await createRun(env,body,auth),201);}
-          if(url.pathname==='/api/requeue-run'){ownerOnly(auth);if(!safeId(body.runId))fail(400,'Invalid run ID');await runAccess(env,auth,body.runId);if(await env.ARTIFACTS.head('runs/'+body.runId+'/cancelled.json'))fail(409,'Collection cancelled');const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status IN ('queued','failed','blocked') AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",body.runId);let sent=0;for(const job of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',job.id))continue;await query(env,"UPDATE jobs SET status='queued' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();await queueDiagnostic(env,job.id,'requeue_requested');await env.IMAGE_JOBS.send({version:1,jobId:job.id});sent++;}return json({runId:body.runId,sent,planner_repeated:false,previous_provider_attempts_repeated:false});}
+          if(url.pathname==='/api/requeue-run'){ownerOnly(auth);if(!safeId(body.runId))fail(400,'Invalid run ID');await runAccess(env,auth,body.runId);if(await runStopped(env,body.runId))fail(409,'Collection cancelled');const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status IN ('queued','failed','blocked') AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",body.runId);let sent=0;for(const job of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',job.id))continue;await query(env,"UPDATE jobs SET status='queued' WHERE id=? AND NOT EXISTS (SELECT 1 FROM attempts WHERE job_id=?)",job.id,job.id).run();await queueDiagnostic(env,job.id,'requeue_requested');await env.IMAGE_JOBS.send({version:1,jobId:job.id});sent++;}return json({runId:body.runId,sent,planner_repeated:false,previous_provider_attempts_repeated:false});}
           if(url.pathname==='/api/dispatch'){ownerOnly(auth);return json({sent:await dispatch(env)});}
           if(url.pathname==='/api/candidates')return json(await saveCandidates(env,body,auth));
           if(url.pathname==='/api/choices')return json(await saveChoice(env,body,auth));
           if(url.pathname==='/api/recover'){ownerOnly(auth);
-            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json'))fail(409,'Collection cancelled');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
+            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
             const receiptKey=`runs/${job.run_id}/${job.object_id}/receipt.json`;if(!await env.ARTIFACTS.head(receiptKey))fail(409,'No durable receipt; billing reconciliation required, no automatic resend');
             const processing=createProcessing(env,job,{kind:'recovery-request'});
             try{await sendFinalization(env,job,processing);}
@@ -399,7 +418,7 @@ export function createWorker(deps={}){return {
           if(message.body.kind==='planner')await processPlan(env,message.body.jobId,deps.textProvider);
           else{
             job=await one(env,'SELECT * FROM jobs WHERE id=?',message.body.jobId);
-            if(job&& !await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json')){
+            if(job&& !await runStopped(env,job.run_id)){
               processing=createProcessing(env,job,{kind:message.body.kind||'image'});
               if(message.body.kind==='image-recovery'){
                 await processing.event('finalization_receive','succeeded',{parent_execution_id:message.body.parentExecutionId});
@@ -461,7 +480,7 @@ export async function reconcilePreviousAttempts(env,auth){
  const report={settled:0,closed_unknown:0,still_running:0,provider_calls:0};
  for(const a of rows){
   const job=await one(env,'SELECT * FROM jobs WHERE id=?',a.job_id);
-  const cancelled=job&&!!await env.ARTIFACTS.head('runs/'+job.run_id+'/cancelled.json');
+  const cancelled=job&&!!await runStopped(env,job.run_id);
   const stale=Date.now()-Date.parse(a.created_at)>=20*60*1000;
   const evidence=await accountingEvidence(env,a);
   if(evidence.receipt_present){

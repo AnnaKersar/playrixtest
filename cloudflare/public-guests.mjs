@@ -41,7 +41,7 @@ const readPaths=new Set(['/api/preflight','/api/planner','/api/studies','/api/ru
 for(const path of ['/archive/economics','/archive/economics/','/production-quotas.mjs'])publicPaths.add(path);
 for(const file of ['', '/', '/index.html', '/style.css', '/test.json', ...['ref','gpt-latest','flux-lora','flux-base'].flatMap(group=>['cup','basket'].map(object=>'/'+group+'-'+object+'.png'))])publicPaths.add('/archive/latest-lora-test'+file);
 for(const file of ['archive-manifest.json','missing-media.json','recovery-candidates.json'])publicPaths.add('/archive-seed/history-v1/'+file);
-const writePaths=new Set(['/api/plan-live','/api/runs','/api/candidates','/api/choices']);
+const writePaths=new Set(['/api/resume-generation','/api/plan-live','/api/runs','/api/candidates','/api/choices']);
 // Caller supplies the existing role-aware backend. This module grants no owner role.
 export function createPublicGuestWorker(backend){return {
  async fetch(request,env){const url=new URL(request.url);

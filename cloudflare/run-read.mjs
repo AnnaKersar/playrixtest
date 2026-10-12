@@ -1,3 +1,4 @@
+import {runStopped} from './resume-generation.mjs';
 import {runAccess,redactRun} from './roles.mjs';
 const one=(env,sql,...args)=>env.DB.prepare(sql).bind(...args).first();
 const all=async(env,sql,...args)=>(await env.DB.prepare(sql).bind(...args).all()).results;
@@ -26,7 +27,7 @@ export async function readRun(env,auth,id,{statusOnly=false,compact=false,ensure
  const run=await runAccess(env,auth,id);
  if(statusOnly){
   const jobs=await all(env,'SELECT id,run_id,object_id,status FROM jobs WHERE run_id=? ORDER BY id',id);
-  return {run:redactRun(run),jobs};
+  return {run:{...redactRun(run),cancelled:await runStopped(env,id)},jobs};
  }
  await ensureCardEdits(env);
  const view=await metadata(env,run),byObject=new Map(view.objects.map(o=>[o.object_id,o]));
@@ -50,5 +51,5 @@ export async function readRun(env,auth,id,{statusOnly=false,compact=false,ensure
    thematic_category:object?.thematic_category||null,category:['C1','C2','C3','C4'].includes(object?.category)?object.category:null,
    generation:object?.generation||null,asset_stage:object?.asset_stage||null};
  }));
- return {run:{...redactRun(run),cancelled:!!await env.ARTIFACTS.head('runs/'+id+'/cancelled.json'),category_names:view.category_names},jobs:results};
+ return {run:{...redactRun(run),cancelled:await runStopped(env,id),category_names:view.category_names},jobs:results};
 }

@@ -8,7 +8,7 @@ export async function stopGeneration(env,auth,body){
  }
  // Validate every resource before making any change.
  let closed=0;for(const item of ids){
-  await env.ARTIFACTS.put(item.prefix+item.id+'/cancelled.json',JSON.stringify({cancelled_at:new Date().toISOString(),principal_id:auth.principalId,reason:'User stopped generation; preserve assets and evidence; no provider replay'}));
+  await env.ARTIFACTS.put(item.prefix+item.id+'/cancelled.json',JSON.stringify({stop_id:crypto.randomUUID(),cancelled_at:new Date().toISOString(),principal_id:auth.principalId,reason:'User stopped generation; preserve assets and evidence; no provider replay'}));
   if(item.field==='runId'){
    await env.DB.prepare("UPDATE jobs SET status='cancelled' WHERE run_id=? AND status<>'complete'").bind(item.id).run();
    await env.DB.prepare("UPDATE outbox SET state='cancelled' WHERE state='pending' AND job_id IN (SELECT id FROM jobs WHERE run_id=?)").bind(item.id).run();
