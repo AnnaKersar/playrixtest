@@ -392,7 +392,11 @@ export function createWorker(deps={}){return {
           if(url.pathname==='/api/candidates')return json(await saveCandidates(env,body,auth));
           if(url.pathname==='/api/choices')return json(await saveChoice(env,body,auth));
           if(url.pathname==='/api/recover'){ownerOnly(auth);
-            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete')return json({recovered:true,provider_calls:0,idempotent:true});
+            if(!safeId(body.jobId))fail(400,'Invalid job');const job=await one(env,'SELECT * FROM jobs WHERE id=?',body.jobId),attempt=await one(env,'SELECT * FROM attempts WHERE job_id=?',body.jobId);if(!job||!attempt)fail(409,'No recoverable attempt');if(await runStopped(env,job.run_id))fail(409,'Collection cancelled');if(job.status==='complete'){
+ const eligible=await all(env,"SELECT j.id FROM jobs j WHERE j.run_id=? AND j.status='queued' AND NOT EXISTS (SELECT 1 FROM attempts a WHERE a.job_id=j.id)",job.run_id);
+ let queued=0;for(const pending of eligible){if(await one(env,'SELECT job_id FROM attempts WHERE job_id=?',pending.id))continue;await env.IMAGE_JOBS.send({version:1,jobId:pending.id});queued++;}
+ return json({recovered:true,provider_calls:0,idempotent:true,unstarted_cards_queued:queued});
+}
             await restoreImageReceipt(env,job,attempt);
             const processing=createProcessing(env,job,{kind:'recovery-request'});
             try{await sendFinalization(env,job,processing);}
