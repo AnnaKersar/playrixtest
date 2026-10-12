@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 import {TARGETS,FIXED,CASH,PRODUCER_LABOR,SOFTWARE_RATE,artistRate,roundCents,scenario,breakEven,GRADES,GD_SALARIES,DEFAULTS} from '../cloudflare/visitor-public/archive-economics.mjs';
 import {createPublicGuestWorker} from '../cloudflare/public-guests.mjs';
@@ -36,3 +37,19 @@ assert.equal(calls,4);
 assert.equal((await worker.fetch(new Request('https://example.com/api/owner/archive/seed'),{})).status,401);
 console.table(TARGETS.map(n=>{const s=scenario(n);return {newCards:n,newUSD:s.variable.toFixed(2),withRD:s.total.toFixed(2),perCard:s.perCard.toFixed(2),juniorDifference:s.grades[0].difference.toFixed(2),middleDifference:s.grades[1].difference.toFixed(2),seniorDifference:s.grades[2].difference.toFixed(2)};}));
 console.log('PASS simple economics: six exact scenarios, salary grades, signed differences, stepped break-even, partial collection, invalid inputs, zero ongoing producer QA, anonymous assets and owner restrictions.');
+
+const archiveHTML=readFileSync(new URL('../cloudflare/visitor-public/archive.html',import.meta.url),'utf8');
+const economicsHTML=readFileSync(new URL('../cloudflare/visitor-public/archive/economics.html',import.meta.url),'utf8');
+const economicsBody=html=>html.match(/<section[^>]*aria-labelledby="comparison-title">([\s\S]*?)<\/section>/)[1];
+assert.equal(economicsBody(archiveHTML),economicsBody(economicsHTML),'Archive summary must match standalone economics');
+assert(economicsBody(archiveHTML).includes('<dd>$250</dd>'));
+assert(economicsBody(archiveHTML).includes('$80 ChatGPT + $170'));
+assert(economicsBody(archiveHTML).includes('<dd>$2 942,31</dd>'));
+assert(economicsBody(archiveHTML).includes('Executive Producer'));
+assert(!/\$140(?![\d ,])|\$180|\$200|2 832|2 872/.test(economicsBody(archiveHTML)));
+const newTests=archiveHTML.match(/<section id="kino-tests-20261012"[\s\S]*?<\/section>/)[0];
+assert.equal((newTests.match(/<details /g)||[]).length,4);
+assert(!/run_[a-f0-9]{20,}|\/api\/(?:journal|attempt-packet|asset)|receipt|github\.com|prompt/i.test(newTests));
+assert.equal((archiveHTML.match(/id="kino-tests-20261012"/g)||[]).length,1);
+assert(archiveHTML.includes('id="history-catalog"'));
+console.log('PASS public archive: economic summaries match, four bounded visual checks, no internal run links or prompts.');

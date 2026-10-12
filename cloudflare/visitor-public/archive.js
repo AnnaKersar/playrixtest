@@ -1170,7 +1170,7 @@ function renderEditorial(m){
   for(const item of archiveEditorial.decisions){const li=el('li');li.append(el('span',item.date,'archive-decision-date'),el('strong',item.title),el('p',item.text));if(item.href)li.append(item.href.startsWith('#history-')?recordLink(item.href.slice(9),'Источник'):link('Источник',item.href));$('decision-list').append(li);}
   const toc=document.querySelector('.archive-toc'),phaseNav=el('details',undefined,'archive-toc-phases');phaseNav.append(el('summary','Все 10 этапов'));
   const first=el('a','Исходные пайплайны');first.href='#original-pipelines';toc.insertBefore(first,toc.querySelector('a'));
-  const economics=el('a','Экономика: в плюсе или минусе?');economics.href='#economics';toc.insertBefore(economics,first);
+  if(!toc.querySelector('a[href="#economics"]')){const economics=el('a','Экономика: в плюсе или минусе?');economics.href='#economics';toc.insertBefore(economics,first);}
   for(const p of archiveEditorial.phases){const a=el('a',p.title);a.href='#'+p.id;phaseNav.append(a);}toc.insertBefore(phaseNav,toc.querySelector('a[href="#archive-schemes"]'));
   if(location.hash==='#phase-09')$('phase-09').scrollIntoView();
 }
